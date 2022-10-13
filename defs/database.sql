@@ -89,6 +89,19 @@ CREATE TABLE polllikes (
 	CONSTRAINT lpid PRIMARY KEY (pid, uid)
 );
 
+CREATE TABLE tag (
+	tid INT UNSIGNED NOT NULL AUTO_INCREMENT,
+	name TEXT NOT NULL,
+	PRIMARY KEY (tid)
+);
+
+CREATE TABLE polltag (
+	tid INT UNSIGNED NOT NULL,
+	pid INT UNSIGNED NOT NULL,
+	CONSTRAINT ptid PRIMARY KEY(tid, pid)
+);
+
+-- 주의: 아래에 있는 {x}는 모두 자리 채움 용, node.js mysql 사용시, ?로 대체
 -- 포스트 10개 씩 반환
 SELECT aux.*, selectionId, selectionText
 FROM (
@@ -129,3 +142,11 @@ SELECT opid as selectionId, COUNT(*) * 100 / SUM(COUNT(*)) OVER () as percent
 FROM polldone
 WHERE pid = {0}
 GROUP BY opid;
+
+-- 투표 투고
+INSERT INTO poll (uid, type, content, uptime) VALUES ({0}, {1}, {2}, CURRENT_TIMESTAMP());
+INSERT INTO polltag (tid, pid) VALUES ({0}, {1});
+INSERT INTO option (content, pid) VALUES ({0}, {1});
+
+-- 개인정보 입력
+INSERT INTO user (uid, gender, age, job, name) VALUES ({0}, {1}, {2}, {3}, {4});

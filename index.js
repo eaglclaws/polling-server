@@ -8,7 +8,7 @@ db = mysql.createConnection({
 	port: '54855',
 	user: 'develop',
 	password: 'cien14789*',
-	database: 'polling'
+	database: 'pollingtesting'
 });
 
 app.get('/', (req, res) => {

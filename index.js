@@ -4,6 +4,9 @@ const mysql = require('mysql');
 const port = 57043;
 const async = require('async');
 const queries = require('./queries.js');
+const bodyParser = require('body-parser');
+
+app.use(bodyParser.json());
 
 db = mysql.createConnection({
 	host: '127.0.0.1',
@@ -81,6 +84,25 @@ app.get('/result/:poll_id', (req, res) => {
 		res.setHeader('Content-Type', 'application/json');
 		res.json({selectionResult: rows});
 	});
+});
+
+app.post('/postpolling', (req, res) => {
+	var {UUID, poll_name, selections, tag} = req.body;
+	console.log(`SELECT tid FROM tag WHERE name = ${tag}`);
+	console.log(`INSERT INTO poll (uid, content, tid, type) VALUES (${UUID}, ${poll_name}, ${tag}, 'polling')`);
+	for (var index in selections) {
+		console.log(`INSERT INTO selection (pid, content) VALUES (pid, ${selections[index]})`);
+	}
+	res.sendStatus(200);
+});
+
+app.post('/signup', (req, res) => {
+	var uid = req.body.UUID.split("_")[1];
+	var gender = req.body.gender;
+	var age = req.body.age;
+	var jobid = req.body.job;
+	console.log(`INSERT INTO user (uid, gender, age, job) VALUES (${uid}, ${gender}, ${age}, ${jobid})`);
+	res.sendStatus(200);
 });
 
 app.listen(port, () => {

@@ -96,6 +96,16 @@ app.post('/postpolling', (req, res) => {
 	res.sendStatus(200);
 });
 
+app.post('/postbalance', (req, res) => {
+	var {UUID, poll_name, selections, tag} = req.body;
+	console.log(`SELECT tid FROM tag WHERE name = ${tag}`);
+	console.log(`INSERT INTO poll (uid, content, tid, type) VALUES (${UUID}, ${poll_name}, ${tag}, 'balance')`);
+	for (var index in selections) {
+		console.log(`INSERT INTO selection (pid, content) VALUES (pid, ${selections[index]})`);
+	}
+	res.sendStatus(200);
+});
+
 app.post('/signup', (req, res) => {
 	var uid = req.body.UUID.split("_")[1];
 	var gender = req.body.gender;
@@ -103,6 +113,43 @@ app.post('/signup', (req, res) => {
 	var jobid = req.body.job;
 	console.log(`INSERT INTO user (uid, gender, age, job) VALUES (${uid}, ${gender}, ${age}, ${jobid})`);
 	res.sendStatus(200);
+});
+
+app.get('/nextuuid', (req, res) => {
+	db.query(queries.getLastUid, (err, rows) => {
+		if (err) throw err;
+		res.setHeader('Content-Type', 'application/json');
+		res.json({uuid: rows[0].uid + 1});
+	});
+});
+
+app.get('/rectag', (req, res) => {
+	db.query(queries.recTag, (err, rows) => {
+		if (err) throw err;
+		var tags = [];
+		for (var index in rows) {
+			tags.push(rows[index].name);
+		}
+		res.setHeader('Content-Type', 'application/json');
+		res.json({tagList: tags});
+	});
+});
+
+app.get('/searchtag', (req, res) => {
+	var sql;
+	if (req.query.tagname == "") {
+		sql = queries.topTags;
+	} else {
+		sql = queries.searchTag;
+	}
+	db.query(sql, [`%${req.query.tagname}%`], (err, rows) => {
+		if (err) throw err;
+		var tags = [];
+		for (var index in rows) {
+			tags.push(rows[index].name);
+		}
+		res.json({tagList: tags});
+	});
 });
 
 app.listen(port, () => {

@@ -41,4 +41,12 @@ const getResult =
 ') as calc ' +
 'INNER JOIN selection ON calc.selectionId = selection.sid;';
 
-module.exports = {topTenPosts, countAllPosts, getResult};
+const getLastUid = 'SELECT uid FROM user ORDER BY uid DESC LIMIT 1;';
+
+const recTag = 'SELECT * FROM tag';
+
+const searchTag = 'SELECT * FROM tag WHERE name LIKE ?;';
+
+const topTags = 'SELECT * FROM tag LIMIT 5';
+
+module.exports = {topTenPosts, countAllPosts, getResult, getLastUid, recTag, searchTag, topTags};

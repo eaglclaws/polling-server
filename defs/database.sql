@@ -22,15 +22,27 @@ CREATE TABLE job (
 	PRIMARY KEY (jid)
 );
 
+CREATE TABLE mbti (
+	name CHAR(4) NOT NULL,
+	PRIMARY KEY (name)
+);
+INSERT INTO mbti VALUES
+	('ESTJ'), ('ESTP'), ('ESFJ'), ('ESFP'),
+	('ENTJ'), ('ENTP'), ('ENFJ'), ('ENFP'),
+	('ISTJ'), ('ISTP'), ('ISFJ'), ('ISFP'),
+	('INTJ'), ('INTP'), ('INFJ'), ('INFP');
+
 CREATE TABLE user (
 	uid INT UNSIGNED NOT NULL AUTO_INCREMENT, -- TODO: EDIT WHEN FIREBASE AUTH SETUP IS DONE
 	name TEXT NOT NULL,
 	age INT UNSIGNED NOT NULL,
 	gender TEXT NOT NULL,
 	job INT UNSIGNED NOT NULL,
+	mbti CHAR(4) NOT NULL,
 	PRIMARY KEY (uid),
 	FOREIGN KEY (gender) REFERENCES gender(name),
-	FOREIGN KEY (job) REFERENCES job(jid)
+	FOREIGN KEY (job) REFERENCES job(jid),
+	FOREIGN KEY (mbti) REFERENCES mbti(name)
 );
 
 CREATE TABLE poll (

@@ -5,6 +5,10 @@ const port = 57043;
 const async = require('async');
 const queries = require('./queries.js');
 const bodyParser = require('body-parser');
+const assert = require('assert');
+const pythonBridge = require('python-bridge');
+const python = pythonBridge({python: 'python3'});
+const stopwords = require('stopwords-ko');
 
 app.use(bodyParser.json());
 
@@ -123,7 +127,7 @@ app.get('/nextuuid', (req, res) => {
 	});
 });
 
-app.get('/rectag', (req, res) => {
+app.post('/rectag', (req, res) => {
 	db.query(queries.recTag, (err, rows) => {
 		if (err) throw err;
 		var tags = [];
@@ -135,14 +139,14 @@ app.get('/rectag', (req, res) => {
 	});
 });
 
-app.get('/searchtag', (req, res) => {
+app.post('/searchtag', (req, res) => {
 	var sql;
-	if (req.query.tagname == "") {
+	if (req.body.tag == "") {
 		sql = queries.topTags;
 	} else {
 		sql = queries.searchTag;
 	}
-	db.query(sql, [`%${req.query.tagname}%`], (err, rows) => {
+	db.query(sql, [`%${req.body.tag}%`], (err, rows) => {
 		if (err) throw err;
 		var tags = [];
 		for (var index in rows) {

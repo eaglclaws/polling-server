@@ -9,6 +9,7 @@ const assert = require('assert');
 const pythonBridge = require('python-bridge');
 const python = pythonBridge({python: 'python3'});
 const stopwords = require('stopwords-ko');
+const usernames = require('./defs/names.json');
 
 app.use(bodyParser.json());
 
@@ -92,18 +93,49 @@ app.get('/result/:poll_id', (req, res) => {
 
 app.post('/postpolling', (req, res) => {
 	var {UUID, poll_name, selections, tag} = req.body;
-	console.log(`SELECT tid FROM tag WHERE name = ${tag}`);
-	console.log(`INSERT INTO poll (uid, content, tid, type) VALUES (${UUID}, ${poll_name}, ${tag}, 'polling')`);
-	for (var index in selections) {
-		console.log(`INSERT INTO selection (pid, content) VALUES (pid, ${selections[index]})`);
-	}
-	res.sendStatus(200);
+	UUID = parseInt(UUID.split('_')[1]);
+	tag = parseInt(tag.split('_')[1]);
+	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'polling'], (err, rows) => {
+		if (err) throw err;
+		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
+			var pid = rows[0].newpid;
+			async.forEachOf(selections, (selection, index, callback) => {
+				db.query('INSERT INTO selection (pid, content) VALUES (?, ?)', [pid, selection], (err, rows) => {
+					if (err) callback(err);
+					callback(null);
+				});
+			}, (err) => {
+				if (err) throw err;
+				db.query('INSERT INTO polltag (pid, tid) VALUES (?, ?)', [pid, tag], (err, rows) => {
+					if (err) throw err;
+					res.sendStatus(200);
+				});
+			});
+		});
+	});
 });
 
 app.post('/postbalance', (req, res) => {
 	var {UUID, poll_name, selections, tag} = req.body;
+	UUID = parseInt(UUID.split('_')[1]);
+	tag = parseInt(tag.split('_')[1]);
 	console.log(`SELECT tid FROM tag WHERE name = ${tag}`);
 	console.log(`INSERT INTO poll (uid, content, tid, type) VALUES (${UUID}, ${poll_name}, ${tag}, 'balance')`);
+	db.query('INSERT INTO poll (uid, content, tid, type) VALUES (?, ?, ? ,?)', [UUID, poll_name, tag, 'balance'], (err, rows) => {
+		if (err) throw err;
+		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
+			var pid = rows[0].newpid;
+			async.forEachOf(selections, (selection, index, callback) => {
+				db.query('INSERT INTO selection (pid, content) VALUES (?, ?)', [pid, selection], (err, rows) => {
+					if (err) callback(err);
+					callback(null);
+				});
+			}, (err) => {
+				if (err) throw err;
+				res.sendStatus(200);
+			});
+		});
+	});
 	for (var index in selections) {
 		console.log(`INSERT INTO selection (pid, content) VALUES (pid, ${selections[index]})`);
 	}
@@ -111,12 +143,23 @@ app.post('/postbalance', (req, res) => {
 });
 
 app.post('/signup', (req, res) => {
-	var uid = req.body.UUID.split("_")[1];
+	var uid = parseInt(req.body.UUID.split("_")[1]);
 	var gender = req.body.gender;
 	var age = req.body.age;
 	var jobid = req.body.job;
+	var mbti = req.body.mbti;
 	console.log(`INSERT INTO user (uid, gender, age, job) VALUES (${uid}, ${gender}, ${age}, ${jobid})`);
-	res.sendStatus(200);
+	db.query('SELECT name FROM usernames WHERE used = FALSE ORDER BY RAND() LIMIT 1', (err, rows) => {
+		if (err) throw err;
+		var name = rows[0].name;
+		db.query('INSERT INTO user (uid, name, gender, age, job, mbti) VALUES (?, ?, ?, ?, ?, ?)', [uid, name, gender, age, jobid, mbti], (err, rows) => {
+			if (err) throw err;
+			db.query('UPDATE usernames SET used = TRUE WHERE name = ?', [name], (err, rows) => {
+				if (err) throw err;
+				res.sendStatus(200);
+			});
+		});
+	});
 });
 
 app.get('/nextuuid', (req, res) => {

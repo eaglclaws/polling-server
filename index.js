@@ -34,19 +34,18 @@ app.get('/db', (req, res) => {
 	});
 });
 
-//This function is not under development; do not uncomment
-//app.post('/login', (res, req) => {
-//	var idToken = res.body.token;
-//	admin.getAuth()
-//		.verifyIdToken(idToken)
-//		.then((decodedToken) => {
-//			const uid = decodedToken.uid;
-//			TODO: Add stuff here
-//		})
-//		.catch((error) => {
-//			TODO: Handle error
-//		});
-//});
+app.post('/login', (req, res) => {
+	var idToken = req.body.token;
+	admin.getAuth()
+		.verifyIdToken(idToken)
+		.then((decodedToken) => {
+			const uid = decodedToken.uid;
+			res.json({UUID: uid});
+		})
+		.catch((error) => {
+			res.sendStatus(500);
+		});
+});
 
 app.listen(port, () => {
 	console.log(`Example app listening on port ${port}`);

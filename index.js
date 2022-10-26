@@ -1,3 +1,5 @@
+'use strict';
+
 const express = require('express');
 const app = express();
 const mysql = require('mysql');
@@ -14,9 +16,9 @@ const usernames = require('./defs/names.json');
 
 app.use(bodyParser.json());
 
-const serviceAccount = require('.firebase/serviceAccountKey.json');
+const serviceAccount = require('/home/seokhyeon/.firebase/serviceAccountKey.json');
 
-db = mysql.createConnection({
+const db = mysql.createConnection({
 	host: '127.0.0.1',
 	port: '54855',
 	user: 'develop',
@@ -27,6 +29,10 @@ db = mysql.createConnection({
 admin.initializeApp({
 	credential: admin.credential.cert(serviceAccount)
 });
+
+python.ex`from nltk.sejong import ssem`
+python.ex`import konlpy`
+python.ex`okt = konlpy.tag.Okt()`
 
 app.get('/', (req, res) => {
 	res.send('Hello World!<br><a href="/posts">Test Database!</a>');
@@ -46,11 +52,12 @@ app.get('/db', (req, res) => {
 
 app.post('/login', (req, res) => {
 	var idToken = req.body.token;
-	admin.getAuth()
+	console.log(idToken);
+	admin.auth()
 		.verifyIdToken(idToken)
 		.then((decodedToken) => {
 			const uid = decodedToken.uid;
-			res.json({UUID: uid});
+			res.json({UUID: uid, isNew: true});
 		})
 		.catch((error) => {
 			res.sendStatus(500);
@@ -58,6 +65,7 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/posts/:index', (req, res) => {
+	console.log(req.params);
 	var tasks = [
 		function (callback) {
 			db.query(queries.countAllPosts, (err, row) => {
@@ -107,13 +115,91 @@ app.get('/result/:poll_id', (req, res) => {
 	db.query(queries.getResult, [pollId], (err, rows) => {
 		if(err) throw err;
 		res.setHeader('Content-Type', 'application/json');
+		for (var index in rows) {
+			rows[index].selectionId = 'sid_' + rows[index].selectionId;
+		}
 		res.json({selectionResult: rows});
 	});
 });
 
+app.get('/detail/:poll_id/:result_type', (req, res) => {
+	var pollId = req.params.poll_id.split('_')[1];
+	var sql;
+	var result = {};
+	if (req.params.result_type == 'gender') {
+		sql = queries.getByGender;
+		db.query(sql, [pollId, pollId], (err, rows) => {
+			if (err) throw err;
+			for (var index in rows) {
+				if (result[rows[index].gender] == null) {
+					result[rows[index].gender] = [{selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent}];
+				} else {
+					result[rows[index].gender].push({selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent});
+				}
+			}
+			console.log(result);
+			res.json(result);
+		});
+	} else if (req.params.result_type == 'age') {
+		db.query(queries.getByAge, [pollId, pollId, pollId], (err, rows) => {
+			if (err) throw err;
+			console.log(rows);
+			for (var index in rows) {
+				if (result[rows[index].age.toString()] == null) {
+					result[rows[index].age.toString()] = [{selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent}];
+				} else {
+					result[rows[index].age.toString()].push({selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent});
+				}
+			}
+			console.log(result);
+			res.json(result);
+		});
+	} else if (req.params.result_type == 'job') {
+		db.query(queries.getByJob, [pollId, pollId, pollId], (err, rows) => {
+			if (err) throw err;
+			for (var index in rows) {
+				if (result[rows[index].job] == null) {
+					result[rows[index].job] = [{selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent}];
+				} else {
+					result[rows[index].job].push({selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent});
+				}
+			}
+			res.json(result);
+		});
+	} else if (req.params.result_type == 'mbti') {
+		db.query(queries.getByMbti, [pollId, pollId], (err, rows) => {
+			if (err) throw err;
+			for (var index in rows) {
+				if (result[rows[index].mbti] == null) {
+					result[rows[index].mbti] = [{selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent}];
+				} else {
+					result[rows[index].mbti].push({selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent});
+				}
+			}
+			res.json(result);
+		});
+	}
+});
+
+app.get('/detail/gender/:poll_id/:is_male', (req, res) => {
+	var pid = parseInt(req.params.poll_id.split('_')[1]);
+	var gen = req.params.is_male == 'true' ? 'M' : 'F';
+	db.query(queries.detailGender, [pid, gen], (err, rows) => {
+		for (var index in rows) {
+			rows[index].selectionId = 'sid_' + rows[index].selectionId;
+		}
+		res.json({selectionResult: rows});
+	});
+});
+
+app.get('/detail/age/:poll_id/:from/:to', (req, res) => {
+	var pid = parseInt(req.params.poll_id.split('_')[1]);
+	var from = parseInt(req.params.from);
+	var to = parseInt(req.params.to);
+});
+
 app.post('/postpolling', (req, res) => {
 	var {UUID, poll_name, selections, tag} = req.body;
-	UUID = parseInt(UUID.split('_')[1]);
 	tag = parseInt(tag.split('_')[1]);
 	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'polling'], (err, rows) => {
 		if (err) throw err;
@@ -163,11 +249,14 @@ app.post('/postbalance', (req, res) => {
 });
 
 app.post('/signup', (req, res) => {
-	var uid = parseInt(req.body.UUID.split("_")[1]);
+	var uid = req.body.UUID;
 	var gender = req.body.gender;
 	var age = req.body.age;
 	var jobid = req.body.job;
 	var mbti = req.body.mbti;
+	if (uid.length != 28) {
+		res.sendStatus(400);
+	}
 	console.log(`INSERT INTO user (uid, gender, age, job) VALUES (${uid}, ${gender}, ${age}, ${jobid})`);
 	db.query('SELECT name FROM usernames WHERE used = FALSE ORDER BY RAND() LIMIT 1', (err, rows) => {
 		if (err) throw err;
@@ -195,7 +284,7 @@ app.post('/rectag', (req, res) => {
 		if (err) throw err;
 		var tags = [];
 		for (var index in rows) {
-			tags.push(rows[index].name);
+			tags.push({tagId: 'tid_' + rows[index].tid, tag: rows[index].name});
 		}
 		res.setHeader('Content-Type', 'application/json');
 		res.json({tagList: tags});
@@ -213,10 +302,23 @@ app.post('/searchtag', (req, res) => {
 		if (err) throw err;
 		var tags = [];
 		for (var index in rows) {
-			tags.push(rows[index].name);
+			tags.push({tagId: 'tid_' + rows[index].tid, tag: rows[index].name});
 		}
 		res.json({tagList: tags});
 	});
+});
+
+app.get('/testnlp', async (req, res) => {
+	var test = '버스 뒷문으로 타는 것 괜찮을까?';
+	var list = await python`okt.nouns(${test})`;
+	python.ex`
+		text = ${list}
+		entry = ssem.entrys(text[0])[0]
+		sense = entry.senses()[0]
+	`;
+	var hyper = await python`sense.hyper()`;
+	console.log(hyper);
+	res.sendStatus(200);
 });
 
 app.listen(port, () => {

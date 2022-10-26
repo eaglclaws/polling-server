@@ -41,6 +41,99 @@ const getResult =
 ') as calc ' +
 'INNER JOIN selection ON calc.selectionId = selection.sid;';
 
+const getByGender =
+'SELECT s.sid, s.content, s.gender, g.percent ' +
+'FROM (' +
+	'SELECT sid, content, name as gender ' +
+	'FROM selection, gender ' +
+	'WHERE pid = ? ' +
+') as s ' +
+'LEFT JOIN (' +
+	'SELECT sid, gender, COUNT(*) * 100 / SUM(COUNT(*)) OVER (PARTITION BY gender) AS percent ' +
+	'FROM polldone '+
+	'INNER JOIN user ON polldone.uid = user.uid ' +
+	'WHERE pid = ? '+
+	'GROUP BY sid, gender '+
+') as g ON s.sid = g.sid and s.gender = g.gender ' +
+'ORDER BY gender';
+
+const getByAge =
+'SELECT s.sid, s.age, g.percent ' +
+'FROM (' +
+	'SELECT sid, age.age ' +
+	'FROM selection, (' +
+		'SELECT age ' +
+		'FROM polldone ' +
+		'INNER JOIN user ON polldone.uid = user.uid ' +
+		'WHERE pid = ? ' +
+		'GROUP BY age' +
+	') as age ' +
+	'WHERE pid = ? ' +
+') as s ' +
+'LEFT JOIN (' +
+	'SELECT sid, age, COUNT(*) * 100 / SUM(COUNT(*)) OVER (PARTITION BY age) AS percent ' +
+	'FROM polldone '+
+	'INNER JOIN user ON polldone.uid = user.uid ' +
+	'WHERE pid = ? '+
+	'GROUP BY sid, age '+
+') as g ON s.sid = g.sid and s.age = g.age ' +
+'ORDER BY age;';
+
+const getByJob =
+'SELECT s.sid, s.job, g.percent ' +
+'FROM (' +
+	'SELECT sid, job.name as job ' +
+	'FROM selection, (' +
+		'SELECT job.name ' +
+		'FROM polldone ' +
+		'INNER JOIN user ON polldone.uid = user.uid ' +
+		'INNER JOIN job on user.job = job.jid ' +
+		'WHERE pid = ? ' +
+		'GROUP BY jid' +
+	') as job ' +
+	'WHERE pid = ? ' +
+') as s ' +
+'LEFT JOIN (' +
+	'SELECT sid, job.name as job, COUNT(*) * 100 / SUM(COUNT(*)) OVER (PARTITION BY jid) AS percent ' +
+	'FROM polldone '+
+	'INNER JOIN user ON polldone.uid = user.uid ' +
+	'INNER JOIN job ON user.job = job.jid ' +
+	'WHERE pid = ? '+
+	'GROUP BY sid, jid '+
+') as g ON s.sid = g.sid and s.job = g.job ' +
+'ORDER BY job;';
+
+const getByMbti =
+'SELECT s.sid, s.content, s.mbti, g.percent ' +
+'FROM (' +
+	'SELECT sid, content, name as mbti ' +
+	'FROM selection, mbti ' +
+	'WHERE pid = ? ' +
+') as s ' +
+'LEFT JOIN (' +
+	'SELECT sid, mbti, COUNT(*) * 100 / SUM(COUNT(*)) OVER (PARTITION BY mbti) AS percent ' +
+	'FROM polldone '+
+	'INNER JOIN user ON polldone.uid = user.uid ' +
+	'WHERE pid = ? '+
+	'GROUP BY sid, mbti '+
+') as g ON s.sid = g.sid and s.mbti = g.mbti ' +
+'ORDER BY mbti';
+
+const detailGender =
+'SELECT calc.sid as selectionId, percent ' +
+'FROM (' +
+	'SELECT sid, COUNT(*) * 100 / SUM(COUNT(*)) OVER () AS percent ' +
+	'FROM (' +
+		'SELECT polldone.* ' +
+		'FROM polldone ' +
+		'INNER JOIN user ON polldone.uid = user.uid ' +
+		'WHERE pid = ? AND gender = ? '+
+	') AS aux ' +
+	'GROUP BY sid ' +
+	'ORDER BY sid ' +
+') AS calc ' +
+'INNER JOIN selection ON calc.sid = selection.sid';
+
 const getLastUid = 'SELECT uid FROM user ORDER BY uid DESC LIMIT 1;';
 
 const recTag = 'SELECT * FROM tag';
@@ -49,4 +142,4 @@ const searchTag = 'SELECT * FROM tag WHERE name LIKE ?;';
 
 const topTags = 'SELECT * FROM tag LIMIT 5';
 
-module.exports = {topTenPosts, countAllPosts, getResult, getLastUid, recTag, searchTag, topTags};
+module.exports = {detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};

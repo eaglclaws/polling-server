@@ -28,18 +28,65 @@ const topTenPosts =
 'SELECT selection.pid, selection.sid as selectionId, selection.content as selectionText FROM selection ' +
 ') as optionList ON aux.postId = optionList.pid) as wrapper INNER JOIN (SELECT uid, name as poster FROM user) as u ON u.uid = wrapper.posterId;';
 
+const getPosts =
+'SELECT poll.*, selection.* ' +
+'FROM ( ' +
+    'SELECT poll.*, total ' +
+    'FROM ( ' +
+        'SELECT poll.*, COALESCE(comment.count, 0) as comments ' +
+        'FROM ( ' +
+            'SELECT poll.*, COALESCE(polllikes.count, 0) as likes ' +
+            'FROM ( ' +
+                'SELECT poll.*, COALESCE(polldone.count, 0) AS count ' +
+                'FROM ( ' +
+                    'SELECT poll.pid, poll.type, poll.content, TIMESTAMPDIFF(MINUTE, poll.time, CURRENT_TIMESTAMP()) AS time, user.name ' +
+                    'FROM ( ' +
+						'SELECT * FROM poll ' +
+						'WHERE type = ? ' +
+                    ') AS poll ' +
+                    'INNER JOIN user ON poll.uid = user.uid ' +
+					'ORDER BY time LIMIT 10 OFFSET ? ' +
+                ') AS poll ' +
+                'LEFT JOIN ( ' +
+                    'SELECT pid, COUNT(*) as count ' +
+                    'FROM polldone ' +
+                    'GROUP BY pid ' +
+                ') AS polldone ON poll.pid = polldone.pid ' +
+            ') AS poll ' +
+            'LEFT JOIN ( ' +
+                'SELECT pid, COUNT(*) as count ' +
+                'FROM polllikes ' +
+                'GROUP BY pid ' +
+            ') AS polllikes ON poll.pid = polllikes.pid ' +
+        ') AS poll ' +
+        'LEFT JOIN ( ' +
+            'SELECT pid, COUNT(*) as count ' +
+            'FROM comment ' +
+            'GROUP BY pid ' +
+        ') AS comment ON poll.pid = comment.pid ' +
+    ') AS poll, ( ' +
+        'SELECT COUNT(*) AS total ' +
+		'FROM poll ' +
+		'WHERE type = ? ' +
+    ') AS total ' +
+') AS poll ' +
+'INNER JOIN ( ' +
+    'SELECT pid, sid, content AS selection ' +
+    'FROM selection ' +
+') AS selection ON poll.pid = selection.pid;';
+
 const countAllPosts = 'SELECT COUNT(*) as sum FROM poll';
 
 const getResult =
 'SELECT selectionId, content, percent ' +
 'FROM (' +
-	'SELECT sid as selectionId, COUNT(*) * 100 / SUM(COUNT(*)) OVER () as percent ' +
+	'SELECT sid, COUNT(*) * 100 / SUM(COUNT(*)) OVER () as percent ' +
 	'FROM polldone ' +
 	'WHERE pid = ? ' +
 	'GROUP BY sid ' +
 	'ORDER BY sid ' +
 ') as calc ' +
-'INNER JOIN selection ON calc.selectionId = selection.sid;';
+'RIGHT JOIN (SELECT sid AS selectionId, content FROM selection WHERE pid = ?) as selection ON calc.sid = selection.selectionId;';
 
 const getByGender =
 'SELECT s.sid, s.content, s.gender, g.percent ' +
@@ -134,6 +181,40 @@ const detailGender =
 ') AS calc ' +
 'INNER JOIN selection ON calc.sid = selection.sid';
 
+const detailAge =
+'SELECT sel.sid as selectionId, sel.age, calc.percent ' +
+'FROM ( ' +
+'    SELECT selection.sid, age.value as age ' +
+'    FROM selection, age ' +
+'    WHERE pid = ? and value BETWEEN ? and ?' +
+') AS sel ' +
+'LEFT JOIN ( ' +
+'    SELECT aux.sid, aux.age, COUNT(*) * 100 / SUM(COUNT(*)) OVER () AS percent ' +
+'    FROM ( ' +
+'        SELECT polldone.sid, user.age ' +
+'        FROM polldone ' +
+'        INNER JOIN user ON polldone.uid = user.uid ' +
+'        WHERE pid = ? and age BETWEEN ? and ?' +
+'    ) AS aux ' +
+'    GROUP BY sid, age ' +
+'    ORDER BY sid, age ' +
+') AS calc ON sel.sid = calc.sid and sel.age = calc.age;'; 
+
+const detailMbti =
+'SELECT s.sid as selectionId, s.mbti, c.percent ' +
+'FROM ( ' +
+    'SELECT sid, name as mbti ' +
+    'FROM selection, mbti ' +
+    'WHERE pid = ? and name LIKE ? ' +
+') AS s ' +
+'LEFT JOIN ( ' +
+    'SELECT sid, mbti, COUNT(*) * 100 / SUM(COUNT(*)) OVER () AS percent ' +
+    'FROM polldone ' +
+    'INNER JOIN user ON polldone.uid = user.uid ' +
+    'WHERE pid = ? and mbti LIKE ? ' +
+    'GROUP BY sid, mbti ' +
+') AS c ON s.sid = c.sid and s.mbti = c.mbti;';
+
 const getLastUid = 'SELECT uid FROM user ORDER BY uid DESC LIMIT 1;';
 
 const recTag = 'SELECT * FROM tag';
@@ -142,4 +223,4 @@ const searchTag = 'SELECT * FROM tag WHERE name LIKE ?;';
 
 const topTags = 'SELECT * FROM tag LIMIT 5';
 
-module.exports = {detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};
+module.exports = {getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};

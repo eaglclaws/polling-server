@@ -13,8 +13,10 @@ const pythonBridge = require('python-bridge');
 const python = pythonBridge({python: 'python3'});
 const stopwords = require('stopwords-ko');
 const usernames = require('./defs/names.json');
+const morgan = require('morgan');
 
 app.use(bodyParser.json());
+app.use(morgan('dev'));
 
 const serviceAccount = require('/home/seokhyeon/.firebase/serviceAccountKey.json');
 
@@ -51,13 +53,18 @@ app.get('/db', (req, res) => {
 });
 
 app.post('/login', (req, res) => {
+	console.log('login');
+	console.log(req.body);
 	var idToken = req.body.token;
-	console.log(idToken);
 	admin.auth()
 		.verifyIdToken(idToken)
 		.then((decodedToken) => {
 			const uid = decodedToken.uid;
-			res.json({UUID: uid, isNew: true});
+			db.query('SELECT * FROM user WHERE uid = ?', [uid], (err, rows) => {
+				if (err) throw err;
+				console.log('login successful');
+				res.json({UUID: uid, isNew: rows.length == 0});
+			});
 		})
 		.catch((error) => {
 			res.sendStatus(500);
@@ -65,6 +72,7 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/posts/:index', (req, res) => {
+	console.log('posts/:index');
 	console.log(req.params);
 	var tasks = [
 		function (callback) {
@@ -110,19 +118,51 @@ app.get('/posts/:index', (req, res) => {
 	});
 });
 
+app.get('/top/:type/:index', (req, res) => {
+	var index = parseInt(req.params.index);
+	var ret = {posts: [], size: 0};
+	db.query(queries.getPosts, [req.params.type, index * 10, req.params.type], (err, rows) => {
+		if (err) throw err;
+		ret.size = rows[0].total;
+		for (var index in rows) {
+			var {pid, type, content, time, name, count, likes, comments} = rows[index];
+			var inserted = false;
+			for (var i in ret.posts) {
+				if (ret.posts[i].postId == 'pid_' + pid) {
+					ret.posts[i].selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection});
+					inserted = true;
+					break;
+				}
+			}
+			if (!inserted) {
+				ret.posts.push({postId: 'pid_' + pid, postType: type, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection}], likes: likes, comments: comments});
+			}
+			inserted = false;
+		}
+		res.json(ret);
+	});
+}); 
+
 app.get('/result/:poll_id', (req, res) => {
+	console.log('result/:poll_id');
+	console.log(req.params);
 	var pollId = req.params.poll_id.split('_')[1];
-	db.query(queries.getResult, [pollId], (err, rows) => {
+	db.query(queries.getResult, [pollId, pollId], (err, rows) => {
 		if(err) throw err;
 		res.setHeader('Content-Type', 'application/json');
 		for (var index in rows) {
 			rows[index].selectionId = 'sid_' + rows[index].selectionId;
+			if (rows[index].percent == null) {
+				rows[index].percent = 0.0;
+			}
 		}
+		console.log(rows);
 		res.json({selectionResult: rows});
 	});
 });
 
 app.get('/detail/:poll_id/:result_type', (req, res) => {
+	console.log(req.params);
 	var pollId = req.params.poll_id.split('_')[1];
 	var sql;
 	var result = {};
@@ -154,18 +194,6 @@ app.get('/detail/:poll_id/:result_type', (req, res) => {
 			console.log(result);
 			res.json(result);
 		});
-	} else if (req.params.result_type == 'job') {
-		db.query(queries.getByJob, [pollId, pollId, pollId], (err, rows) => {
-			if (err) throw err;
-			for (var index in rows) {
-				if (result[rows[index].job] == null) {
-					result[rows[index].job] = [{selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent}];
-				} else {
-					result[rows[index].job].push({selectionId: 'sid_' + rows[index].sid, percent: rows[index].percent == null ? 0.0 : rows[index].percent});
-				}
-			}
-			res.json(result);
-		});
 	} else if (req.params.result_type == 'mbti') {
 		db.query(queries.getByMbti, [pollId, pollId], (err, rows) => {
 			if (err) throw err;
@@ -182,6 +210,8 @@ app.get('/detail/:poll_id/:result_type', (req, res) => {
 });
 
 app.get('/detail/gender/:poll_id/:is_male', (req, res) => {
+	console.log('detail/gender/:poll_id/:is_male');
+	console.log(req.params);
 	var pid = parseInt(req.params.poll_id.split('_')[1]);
 	var gen = req.params.is_male == 'true' ? 'M' : 'F';
 	db.query(queries.detailGender, [pid, gen], (err, rows) => {
@@ -196,9 +226,48 @@ app.get('/detail/age/:poll_id/:from/:to', (req, res) => {
 	var pid = parseInt(req.params.poll_id.split('_')[1]);
 	var from = parseInt(req.params.from);
 	var to = parseInt(req.params.to);
+	db.query(queries.detailAge, [pid, from, to, pid, from, to], (err, rows) => {
+		var ret = {};
+		for (var index in rows) {
+			var per = rows[index].percent == null ? 0.0 : rows[index].percent;
+			if (ret[rows[index].age] == null) {
+				ret[rows[index].age] = [{selectionId: rows[index].selectionId, percent: per}];
+			} else {
+				ret[rows[index].age].push({selectionId: rows[index].selectionId, percent: per});
+			}
+		}
+		res.json(ret);
+	});
+});
+
+app.get('/detail/mbti/:poll_id/:selectE/:selectS/:selectT/:selectJ', (req, res) => {
+	var pid = parseInt(req.params.poll_id.split('_')[1]);
+	var se = parseInt(req.params.selectE);
+	var ss = parseInt(req.params.selectS);
+	var st = parseInt(req.params.selectT);
+	var sj = parseInt(req.params.selectJ);
+	var ei = se == 0 ? '%' : (se == 1 ? 'E' : 'I');
+	var sn = ss == 0 ? '%' : (ss == 1 ? 'S' : 'N');
+	var tf = st == 0 ? '%' : (st == 1 ? 'T' : 'F');
+	var jp = sj == 0 ? '%' : (sj == 1 ? 'J' : 'P');
+	var mbti = ei + sn + tf + jp;
+	db.query(queries.detailMbti, [pid, mbti, pid, mbti], (err, rows) => {
+		var ret = {};
+		for (var index in rows) {
+			var per = rows[index].percent == null ? 0.0 : rows[index].percent;
+			if (ret[rows[index].mbti] == null) {
+				ret[rows[index].mbti] = [{selectionId: rows[index].selectionId, percent: per}]
+			} else {
+				ret[rows[index].mbti].push({selectionId: rows[index].selectionId, perecnt: per});
+			}
+		}
+		res.json(ret);
+	});
 });
 
 app.post('/postpolling', (req, res) => {
+	console.log('postpolling');
+	console.log(req.body);
 	var {UUID, poll_name, selections, tag} = req.body;
 	tag = parseInt(tag.split('_')[1]);
 	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'polling'], (err, rows) => {
@@ -218,6 +287,18 @@ app.post('/postpolling', (req, res) => {
 				});
 			});
 		});
+	});
+});
+
+app.post('/vote', (req, res) => {
+	console.log('vote');
+	console.log(req.body);
+	var {UUID, poll_id, sid} = req.body;
+	poll_id = parseInt(poll_id.split('_')[1]);
+	sid = parseInt(sid.split('_')[1]);
+	db.query('INSERT INTO polldone (uid, pid, sid) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE sid = ?', [UUID, poll_id, sid, sid], (err, rows) => {
+		if (err) throw err;
+		res.sendStatus(200);
 	});
 });
 
@@ -249,19 +330,19 @@ app.post('/postbalance', (req, res) => {
 });
 
 app.post('/signup', (req, res) => {
+	console.log('signup');
+	console.log(req.body);
 	var uid = req.body.UUID;
 	var gender = req.body.gender;
 	var age = req.body.age;
-	var jobid = req.body.job;
 	var mbti = req.body.mbti;
 	if (uid.length != 28) {
 		res.sendStatus(400);
 	}
-	console.log(`INSERT INTO user (uid, gender, age, job) VALUES (${uid}, ${gender}, ${age}, ${jobid})`);
 	db.query('SELECT name FROM usernames WHERE used = FALSE ORDER BY RAND() LIMIT 1', (err, rows) => {
 		if (err) throw err;
 		var name = rows[0].name;
-		db.query('INSERT INTO user (uid, name, gender, age, job, mbti) VALUES (?, ?, ?, ?, ?, ?)', [uid, name, gender, age, jobid, mbti], (err, rows) => {
+		db.query('INSERT INTO user (uid, name, gender, age, mbti) VALUES (?, ?, ?, ?, ?)', [uid, name, gender, age, mbti], (err, rows) => {
 			if (err) throw err;
 			db.query('UPDATE usernames SET used = TRUE WHERE name = ?', [name], (err, rows) => {
 				if (err) throw err;
@@ -292,6 +373,8 @@ app.post('/rectag', (req, res) => {
 });
 
 app.post('/searchtag', (req, res) => {
+	console.log('searchtag');
+	console.log(req.body);
 	var sql;
 	if (req.body.tag == "") {
 		sql = queries.topTags;
@@ -319,6 +402,12 @@ app.get('/testnlp', async (req, res) => {
 	var hyper = await python`sense.hyper()`;
 	console.log(hyper);
 	res.sendStatus(200);
+});
+
+app.get('/empty', (req, res) => {
+	db.query('SELECT * FROM user WHERE uid = ?', ['6'], (err, rows) => {
+		res.json({result: rows});
+	});
 });
 
 app.listen(port, () => {

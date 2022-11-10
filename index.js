@@ -121,6 +121,26 @@ app.get('/posts/:index', (req, res) => {
 app.get('/top/:type/:index', (req, res) => {
 	var index = parseInt(req.params.index);
 	var ret = {posts: [], size: 0};
+	if (req.params.type == 'battle') {
+		res.json({posts: [{
+    postId: 29,
+    timeLeft: 52,
+    userCount: 252,
+    selection: [{text: '부먹'}, {text: '찍먹'}],
+},
+{
+    postId: 30,
+    timeLeft: 60,
+    userCount: 375,
+    selection: [{text: '버스'}, {text: '전철'}],
+},
+{
+    postId: 31,
+    timeLeft: 26,
+    userCount: 183,
+    selection: [{text: '민초파'}, {text: '반민초파'}],
+}]});
+	}
 	db.query(queries.getPosts, [req.params.type, index * 10, req.params.type], (err, rows) => {
 		if (err) throw err;
 		ret.size = rows[0].total;
@@ -135,7 +155,7 @@ app.get('/top/:type/:index', (req, res) => {
 				}
 			}
 			if (!inserted) {
-				ret.posts.push({postId: 'pid_' + pid, postType: type, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection}], likes: likes, comments: comments});
+				ret.posts.push({postId: 'pid_' + pid, postType: type, posterImage: rows[index].image, posterUuid: rows[index].uid, posterId: rows[index].prefix + ' ' + rows[index].name, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection}], likes: likes, comments: comments});
 			}
 			inserted = false;
 		}
@@ -228,15 +248,31 @@ app.get('/detail/age/:poll_id/:from/:to', (req, res) => {
 	var to = parseInt(req.params.to);
 	db.query(queries.detailAge, [pid, from, to, pid, from, to], (err, rows) => {
 		var ret = {};
+		var nret = {selectionResult: []}
+		var sids = [];
 		for (var index in rows) {
 			var per = rows[index].percent == null ? 0.0 : rows[index].percent;
 			if (ret[rows[index].age] == null) {
-				ret[rows[index].age] = [{selectionId: rows[index].selectionId, percent: per}];
+				ret[rows[index].age] = [{selectionId: 'sid_' + rows[index].selectionId, percent: per}];
 			} else {
-				ret[rows[index].age].push({selectionId: rows[index].selectionId, percent: per});
+				ret[rows[index].age].push({selectionId: 'sid_' + rows[index].selectionId, percent: per});
+			}
+			if (!sids.includes('sid_' + rows[index].selectionId)) {
+				sids.push('sid_' + rows[index].selectionId);
 			}
 		}
-		res.json(ret);
+		for (var i in sids) {
+			var percent = 0;
+			for (var j in ret) {
+				for (var k in ret[j]) {
+					if (ret[j][k].selectionId == sids[i]) {
+						percent += ret[j][k].percent;
+					}
+				}
+			}
+			nret.selectionResult.push({selectionId: sids[i], percent: percent});
+		}
+		res.json(nret);
 	});
 });
 
@@ -253,15 +289,31 @@ app.get('/detail/mbti/:poll_id/:selectE/:selectS/:selectT/:selectJ', (req, res) 
 	var mbti = ei + sn + tf + jp;
 	db.query(queries.detailMbti, [pid, mbti, pid, mbti], (err, rows) => {
 		var ret = {};
+		var nret = {selectionResult: []};
+		var sids = [];
 		for (var index in rows) {
 			var per = rows[index].percent == null ? 0.0 : rows[index].percent;
 			if (ret[rows[index].mbti] == null) {
-				ret[rows[index].mbti] = [{selectionId: rows[index].selectionId, percent: per}]
+				ret[rows[index].mbti] = [{selectionId: 'sid_' + rows[index].selectionId, percent: per}]
 			} else {
-				ret[rows[index].mbti].push({selectionId: rows[index].selectionId, perecnt: per});
+				ret[rows[index].mbti].push({selectionId: 'sid_' + rows[index].selectionId, percent: per});
+			}
+			if (!sids.includes('sid_' + rows[index].selectionId)) {
+				sids.push('sid_' + rows[index].selectionId);
 			}
 		}
-		res.json(ret);
+		for (var i in sids) {
+			var percentage = 0;
+			for (var j in ret) {
+				for (var k in ret[j]) {
+					if (ret[j][k].selectionId == sids[i]) {
+						percentage += ret[j][k].percent;
+					}
+				}
+			}
+			nret.selectionResult.push({selectionId: sids[i], percent: percentage});
+		}
+		res.json(nret);
 	});
 });
 
@@ -271,6 +323,31 @@ app.post('/postpolling', (req, res) => {
 	var {UUID, poll_name, selections, tag} = req.body;
 	tag = parseInt(tag.split('_')[1]);
 	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'polling'], (err, rows) => {
+		if (err) throw err;
+		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
+			var pid = rows[0].newpid;
+			async.forEachOf(selections, (selection, index, callback) => {
+				db.query('INSERT INTO selection (pid, content) VALUES (?, ?)', [pid, selection], (err, rows) => {
+					if (err) callback(err);
+					callback(null);
+				});
+			}, (err) => {
+				if (err) throw err;
+				db.query('INSERT INTO polltag (pid, tid) VALUES (?, ?)', [pid, tag], (err, rows) => {
+					if (err) throw err;
+					res.sendStatus(200);
+				});
+			});
+		});
+	});
+});
+
+app.post('/postbalance', (req, res) => {
+	console.log('postpolling');
+	console.log(req.body);
+	var {UUID, poll_name, selections, tag} = req.body;
+	tag = parseInt(tag.split('_')[1]);
+	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'balance'], (err, rows) => {
 		if (err) throw err;
 		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
 			var pid = rows[0].newpid;
@@ -301,14 +378,13 @@ app.post('/vote', (req, res) => {
 		res.sendStatus(200);
 	});
 });
-
+/*
 app.post('/postbalance', (req, res) => {
 	var {UUID, poll_name, selections, tag} = req.body;
-	UUID = parseInt(UUID.split('_')[1]);
 	tag = parseInt(tag.split('_')[1]);
 	console.log(`SELECT tid FROM tag WHERE name = ${tag}`);
 	console.log(`INSERT INTO poll (uid, content, tid, type) VALUES (${UUID}, ${poll_name}, ${tag}, 'balance')`);
-	db.query('INSERT INTO poll (uid, content, tid, type) VALUES (?, ?, ? ,?)', [UUID, poll_name, tag, 'balance'], (err, rows) => {
+	db.query('INSERT INTO poll (uid, content, time, type) VALUES (?, ?, CURRENT_TIMESTAMP(),?)', [UUID, poll_name, tag, 'balance'], (err, rows) => {
 		if (err) throw err;
 		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
 			var pid = rows[0].newpid;
@@ -328,7 +404,7 @@ app.post('/postbalance', (req, res) => {
 	}
 	res.sendStatus(200);
 });
-
+*/
 app.post('/signup', (req, res) => {
 	console.log('signup');
 	console.log(req.body);
@@ -341,8 +417,9 @@ app.post('/signup', (req, res) => {
 	}
 	db.query('SELECT name FROM usernames WHERE used = FALSE ORDER BY RAND() LIMIT 1', (err, rows) => {
 		if (err) throw err;
-		var name = rows[0].name;
-		db.query('INSERT INTO user (uid, name, gender, age, mbti) VALUES (?, ?, ?, ?, ?)', [uid, name, gender, age, mbti], (err, rows) => {
+		var name = rows[0].name.split(' ')[1];
+		var prefix = rows[0].name.split(' ')[0];
+		db.query('INSERT INTO user (uid, prefix, name, gender, age, mbti) VALUES (?, ?, ?, ?, ?)', [uid, prefix, name, gender, age, mbti], (err, rows) => {
 			if (err) throw err;
 			db.query('UPDATE usernames SET used = TRUE WHERE name = ?', [name], (err, rows) => {
 				if (err) throw err;
@@ -407,6 +484,66 @@ app.get('/testnlp', async (req, res) => {
 app.get('/empty', (req, res) => {
 	db.query('SELECT * FROM user WHERE uid = ?', ['6'], (err, rows) => {
 		res.json({result: rows});
+	});
+});
+
+app.get('/profile/:user/:target', (req, res) => {
+	db.query(queries.userLookup, [req.params.target], (err, rows) => {
+		if (req.params.user == 'null' && req.params.target == 'null') {
+			res.json({isMyProfile: false, name: 'GUEST', prefix: '', ownPrefixList: [], profileImg: 'https://i.imgur.com/Z3P15Dj.png'})
+		}
+		var ret = {isMyProfile: req.params.user == req.params.target, name: rows[0].name, prefix: rows[0].prefix, ownPrefixList: [], profileImg: rows[0].image};
+		for (var index in rows) {
+			ret.ownPrefixList.push(rows[index].owned);
+		}
+		res.json(ret);
+	});
+});
+
+app.post('/namechange', (req, res) => {
+	var uid = req.body.UUID;
+	var name = req.body.name;
+	db.query('UPDATE user SET name = ? WHERE uid = ?', [name, uid], (err, rows) => {
+		res.json({name: name});
+	});
+});
+
+app.post('/prefixchange', (req, res) => {
+	var uid = req.body.UUID;
+	var prefix = req.body.prefix;
+	db.query('UPDATE user SET prefix = ? WHERE uid = ?', [prefix, uid], (err, rows) => {
+		res.json({prefix: prefix});
+	});
+});
+
+app.get('/comments/:pid', (req, res) => {
+	var pid = parseInt(req.params.pid.split('_')[1]);
+	db.query(queries.getComments, [pid, pid], (err, rows) => {
+		var ret = {comments: []};
+		for (var index in rows) {
+			var {uid, image, prefix, name, content, sid, time} = rows[index];
+			ret.comments.push({profileImage: image, posterUuid: uid, posterId: prefix + ' ' + name, selectNum: sid, content: content, timeBefore: time});
+		}
+		res.json(ret);
+	});
+});
+
+app.post('/postcomment', (req, res) => {
+	var uid = req.body.UUID;
+	var pid = parseInt(req.body.pid.split('_')[1]);
+	var content = req.body.content;
+	db.query('INSERT INTO comment (uid, pid, content) VALUES (?, ?, ?)', [uid, pid, content], () => {
+		res.sendStatus(200);
+	});
+});
+
+app.get('/allprefix', (req, res) => {
+	var ret = {prefix: []};
+	db.query('SELECT * FROM prefix', (err, rows) => {
+		for (var index in rows) {
+			ret.prefix.push(rows[index].name);
+		}
+		res.json(ret);
 	});
 });
 

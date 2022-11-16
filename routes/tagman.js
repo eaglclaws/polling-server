@@ -54,7 +54,7 @@ router.post('/searchtag', (req, res) => {
 	});
 });
 
-app.get('/testnlp', async (req, res) => {
+router.get('/testnlp', async (req, res) => {
 	var test = '버스 뒷문으로 타는 것 괜찮을까?';
 	var list = await python`okt.nouns(${test})`;
 	python.ex`

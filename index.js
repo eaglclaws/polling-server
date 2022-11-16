@@ -20,7 +20,7 @@ const FDL = require('firebase-dynamic-links');
 const fdl = new FDL.FirebaseDynamicLinks('AIzaSyD4OXIGO-t86tsvYqMqVX3C2axRiS6inrE');
 const fileUpload = require('express-fileupload');
 
-app.use(bodyParser.json());
+app.use(bodyParser.json({limit: '100mb'}));
 app.use(morgan('dev'));
 app.use('/images', express.static(__dirname + '/images'));
 app.use(fileUpload({
@@ -48,8 +48,10 @@ python.ex`okt = konlpy.tag.Okt()`
 
 const usermanRoutes = require('./routes/userman');
 const postmanRoutes = require('./routes/postman');
+const tagmanRoutes = require('./routes/tagman');
 app.use(usermanRoutes);
 app.use(postmanRoutes);
+app.use(tagmanRoutes);
 
 app.get('/', (req, res) => {
 	res.send('Hello World!<br><a href="/posts">Test Database!</a>');
@@ -171,6 +173,8 @@ app.post('/postcomment', (req, res) => {
 });
 
 app.get('/dynamiclink/:pid', async (req, res) => {
+	var title = '모두의 의견이 한 곳에! 폴링';
+	var desc =  '관심 있을 투표가 이곳에 있어요! 한번 살펴 보시겠어요?';
 	const {shortLink, previewLink} = await fdl.createLink({
 		dynamicLinkInfo: {
 			domainUriPrefix: 'https://pollingcap.page.link',
@@ -181,12 +185,16 @@ app.get('/dynamiclink/:pid', async (req, res) => {
 			iosInfo: {
 				iosBundleId: 'com.polling',
 			},
+			socialMetaTagInfo: {
+				socialTitle: title,
+				socialDescription: desc,
+			},
 		},
 	});
 	db.query('SELECT type FROM poll WHERE pid = ?', [req.params.pid.split('_')[1]], (err, rows) => {
 		var type = rows[0].type;
 		var url = shortLink;
-		res.json({link: url});
+		res.json({link: url, socialTitle: title, socialDescription: desc});
 	});
 });
 

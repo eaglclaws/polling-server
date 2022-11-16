@@ -13,6 +13,7 @@ const queries = require('../queries.js');
 const bodyParser = require('body-parser');
 const usernames = require('../defs/names.json');
 const async = require('async');
+const fs = require('fs');
 
 router.get('/view/:pid', (req, res) => {
 	var pid = parseInt(req.params.pid.split('_')[1]);
@@ -209,20 +210,37 @@ router.post('/postpolling', async (req, res) => {
 		if (err) throw err;
 		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
 			var pid = rows[0].newpid;
-			async.forEachOf(selections, (selection, index, callback = () => {
-				db.query('SELECT LAST_INSERT_ID() as newsid', (err, rows) => {
-					ret.selections.push({selectionId: 'sid_' + rows[0].newsid, text: selection});
-				});
-			}) => {
-				db.query('INSERT INTO selection (pid, content) VALUES (?, ?)', [pid, selection], (err, rows) => {
+			async.forEachOf(selections, (selection, index, callback) => {
+				var label = selection.label;
+				var image = selection.image;
+				db.query('INSERT INTO selection (pid, content, image) VALUES (?, ?, ?)', [pid, label, image], (err, rows) => {
 					if (err) callback(err);
-					callback();
+					callback(null);
 				});
 			}, (err) => {
 				if (err) throw err;
 				db.query('INSERT INTO polltag (pid, tid) VALUES (?, ?)', [pid, tag], (err, rows) => {
 					if (err) throw err;
-					res.json(ret);
+					db.query('SELECT sid, image FROM selection WHERE pid = ?', [pid], (err, rows) => {
+						async.forEachOf(rows, (row, index, callback) => {
+							if (row.image != '') {
+								var ext = (row.image.split(';base64,')[0]).split('/').pop();
+								var b64 = row.image.split(';base64,').pop();
+								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
+								var url = 'https://devcap.duckdns.org/images/selection/sid_' + row.sid + '.' + ext;
+								db.query('UPDATE selection SET image = ? WHERE pid = ? AND sid = ?', [url, pid, row.sid], (err, rows) => {
+									if (err) throw err;
+									callback(null);
+								});
+							} else {
+								db.query('UPDATE selection SET image = NULL WHERE sid = ?', [row.sid], (err, rows) => {
+									callback(null);
+								});
+							}
+						}, (err) => {
+							res.sendStatus(200);
+						});
+					});
 				});
 			});
 		});
@@ -247,12 +265,25 @@ router.post('/postbalance', (req, res) => {
 				if (err) throw err;
 				db.query('INSERT INTO polltag (pid, tid) VALUES (?, ?)', [pid, tag], (err, rows) => {
 					if (err) throw err;
-					db.query('SELECT sid, content FROM selection WHERE pid = ?', [pid], (err, rows) => {
-						var ret = {selections: []};
-						for (var index in rows) {
-							ret.selections.push({selectionId: 'sid_' + rows[index].sid, test: rows[index].content});
-						}
-						res.json(ret);
+					db.query('SELECT sid, image FROM selection WHERE pid = ?', [pid], (err, rows) => {
+						async.forEachOf(rows, (row, index, callback) => {
+							if (row.image != '') {
+								var ext = row.image.split(';base64,')[0].split('/').pop();
+								var b64 = row.image.split(';base64,').pop();
+								fs.writeFile('image/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
+								var url = 'https://devcap.duckdns.og/images/selection/sid_' + row.sid + '.' + ext;
+								db.query('UPDATE selection SET image = ? WHERE sid = ?', [url, row.sid], (err, rows) => {
+									if (err) throw err;
+									callback(null);
+								});
+							} else {
+								db.query('UPDATE selection SET image = NULL WHERE sid = ?', [row.sid], (err, rows) => {
+									callback(null);
+								});
+							}
+						}, (err) => {
+							res.sendStatus(200);
+						});
 					});
 				});
 			});
@@ -260,5 +291,13 @@ router.post('/postbalance', (req, res) => {
 	});
 });
 
+router.get('/testnull', (req, res) => {
+	db.query('SELECT image FROM selection WHERE pid = 37', (err, rows) => {
+		for (var index in rows) {
+			console.log(rows[index].image == null);
+		}
+		res.sendStatus(200);
+	});
+});
 
 module.exports = router;

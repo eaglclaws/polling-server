@@ -75,6 +75,52 @@ const getPosts =
     'FROM selection ' +
 ') AS selection ON poll.pid = selection.pid;';
 
+const getPostById =
+'SELECT poll.*, selection.* ' +
+'FROM ( ' +
+    'SELECT poll.*, total ' +
+    'FROM ( ' +
+        'SELECT poll.*, COALESCE(comment.count, 0) as comments ' +
+        'FROM ( ' +
+            'SELECT poll.*, COALESCE(polllikes.count, 0) as likes ' +
+            'FROM ( ' +
+                'SELECT poll.*, COALESCE(polldone.count, 0) AS count ' +
+                'FROM ( ' +
+                    'SELECT poll.pid, poll.type, poll.content, TIMESTAMPDIFF(MINUTE, poll.time, CURRENT_TIMESTAMP()) AS time, user.uid, user.image, user.prefix, user.name ' +
+                    'FROM ( ' +
+						'SELECT * FROM poll ' +
+						'WHERE pid = ? ' +
+                    ') AS poll ' +
+                    'INNER JOIN user ON poll.uid = user.uid ' +
+                ') AS poll ' +
+                'LEFT JOIN ( ' +
+                    'SELECT pid, COUNT(*) as count ' +
+                    'FROM polldone ' +
+                    'GROUP BY pid ' +
+                ') AS polldone ON poll.pid = polldone.pid ' +
+            ') AS poll ' +
+            'LEFT JOIN ( ' +
+                'SELECT pid, COUNT(*) as count ' +
+                'FROM polllikes ' +
+                'GROUP BY pid ' +
+            ') AS polllikes ON poll.pid = polllikes.pid ' +
+        ') AS poll ' +
+        'LEFT JOIN ( ' +
+            'SELECT pid, COUNT(*) as count ' +
+            'FROM comment ' +
+            'GROUP BY pid ' +
+        ') AS comment ON poll.pid = comment.pid ' +
+    ') AS poll, ( ' +
+        'SELECT COUNT(*) AS total ' +
+		'FROM poll ' +
+    ') AS total ' +
+') AS poll ' +
+'INNER JOIN ( ' +
+    'SELECT pid, sid, content AS selection ' +
+    'FROM selection ' +
+') AS selection ON poll.pid = selection.pid;';
+
+
 const countAllPosts = 'SELECT COUNT(*) as sum FROM poll';
 
 const getResult =
@@ -251,4 +297,4 @@ const getComments =
 	'select uid, sid from polldone where pid = ? ' +
 ') as polldone on comment.uid = polldone.uid; ';
 
-module.exports = {getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};
+module.exports = {getPostById, getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};

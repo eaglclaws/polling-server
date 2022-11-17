@@ -14,6 +14,8 @@ const bodyParser = require('body-parser');
 const usernames = require('../defs/names.json');
 const admin = require('firebase-admin');
 const serviceAccount = require('/home/seokhyeon/.firebase/serviceAccountKey.json');
+const fs = require('fs');
+const hostUrl = 'http://devcap.duckdns.org:57043/'
 
 router.post('/login', (req, res) => {
 	console.log('login');
@@ -41,6 +43,16 @@ router.post('/signup', (req, res) => {
 	var gender = req.body.gender;
 	var age = req.body.age;
 	var mbti = req.body.mbti;
+	var url = hostUrl + 'images/profile/';
+	var profile = req.body.profile;
+	var birthday = req.body.birthday;
+	var bdaypholder = 'DATE_SUB(CURRENT_DATE(), INTERVAL ' + age + ' YEAR)'
+	if (birthday == null) {
+		birthday = bdaypholder;
+	}
+	if (profile == null) {
+		profile = url + 'profile0.png';
+	}
 	if (uid.length != 28) {
 		res.sendStatus(400);
 	}
@@ -48,7 +60,7 @@ router.post('/signup', (req, res) => {
 		if (err) throw err;
 		var name = rows[0].name.split(' ')[1];
 		var prefix = rows[0].name.split(' ')[0];
-		db.query('INSERT INTO user (uid, prefix, name, gender, age, birthday, mbti) VALUES (?, ?, ?, ?, ?, DATE_SUB(CURRENT_DATE(), INTERVAL ? YEAR),?)', [uid, prefix, name, gender, age, age, mbti], (err, rows) => {
+		db.query('INSERT INTO user (uid, prefix, name, gender, age, birthday, mbti, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [uid, prefix, name, gender, age, birthday, mbti, profile], (err, rows) => {
 			if (err) throw err;
 			db.query('UPDATE usernames SET used = TRUE WHERE name = ?', [name], (err, rows) => {
 				if (err) throw err;
@@ -97,5 +109,38 @@ router.post('/prefixchange', (req, res) => {
 	});
 });
 
+router.post('/imagechange', (req, res) => {
+	var uid = req.body.UUID;
+	var image = req.body.index;
+	var url = hostUrl + 'images/profile/profile' + image + '.png';
+	db.query('UPDATE user SET image = ? WHERE uid = ?', [url, uid], (err, rows) => {
+		res.json({image: url});
+	});
+});
+
+router.get('/profimgs', (req, res) => {
+	var files = fs.readdirSync('./images/profile').length;
+	var ret = {images: []};
+	for (var i = 0; i < files; i++) {
+		ret.images.push(hostUrl + 'images/profile/profile' + i + '.png');
+	}
+	res.json(ret);
+});
+
+router.get('/rawuserdata/:uid', (req, res) => {
+	db.query('SELECT * FROM user WHERE uid = ?', [req.params.uid], (err, rows) => {
+		var ret = {
+			uid: rows[0].uid,
+			prefix: rows[0].prefix,
+			name: rows[0].name,
+			age: rows[0].age,
+			gender: rows[0].gender,
+			mbti: rows[0].mbti,
+			image: rows[0].image,
+			birthday: rows[0].birthday
+		}
+		res.json(ret);
+	});
+});
 
 module.exports = router;

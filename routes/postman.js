@@ -229,7 +229,7 @@ router.post('/postpolling', async (req, res) => {
 								var ext = (row.image.split(';base64,')[0]).split('/').pop();
 								var b64 = row.image.split(';base64,').pop();
 								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
-								var url = 'https://devcap.duckdns.org/images/selection/sid_' + row.sid + '.' + ext;
+								var url = 'http://devcap.duckdns.org:57043/images/selection/sid_' + row.sid + '.' + ext;
 								db.query('UPDATE selection SET image = ? WHERE pid = ? AND sid = ?', [url, pid, row.sid], (err, rows) => {
 									if (err) throw err;
 									callback(null);
@@ -275,7 +275,7 @@ router.post('/postbalance', (req, res) => {
 								var ext = row.image.split(';base64,')[0].split('/').pop();
 								var b64 = row.image.split(';base64,').pop();
 								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
-								var url = 'https://devcap.duckdns.og/images/selection/sid_' + row.sid + '.' + ext;
+								var url = 'http://devcap.duckdns.org:57043/images/selection/sid_' + row.sid + '.' + ext;
 								db.query('UPDATE selection SET image = ? WHERE sid = ?', [url, row.sid], (err, rows) => {
 									if (err) throw err;
 									callback(null);

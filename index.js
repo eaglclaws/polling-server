@@ -207,6 +207,10 @@ app.post('/testfileup', (req, res) => {
 	res.sendStatus(200);
 });
 
+app.post('/nulltester', (req, res) => {
+	res.json({response: req.body.foo == null});
+});
+
 app.listen(port, () => {
 	console.log(`Polling server listening on port ${port}`);
 });

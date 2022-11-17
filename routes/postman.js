@@ -23,6 +23,7 @@ router.get('/view/:pid', (req, res) => {
 			postType: rows[0].type,
 			posterId: rows[0].prefix + ' ' + rows[0].name,
 			posterUuid: rows[0].uid,
+			posterImage: rows[0].image,
 			timeBefore: rows[0].time,
 			userCount: rows[0].count,
 			storyText: rows[0].content,
@@ -31,7 +32,7 @@ router.get('/view/:pid', (req, res) => {
 			comments: rows[0].comments
 		};
 		for (var index in rows) {
-			ret.selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection});
+			ret.selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage});
 		}
 		res.json(ret);
 	});
@@ -59,7 +60,7 @@ router.get('/top/:type/:index', (req, res) => {
     userCount: 183,
     selection: [{text: '민초파'}, {text: '반민초파'}],
 }]});
-	}
+	} else {
 	db.query(queries.getPosts, [req.params.type, index * 10, req.params.type], (err, rows) => {
 		if (err) throw err;
 		ret.size = rows[0].total;
@@ -68,18 +69,19 @@ router.get('/top/:type/:index', (req, res) => {
 			var inserted = false;
 			for (var i in ret.posts) {
 				if (ret.posts[i].postId == 'pid_' + pid) {
-					ret.posts[i].selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection});
+					ret.posts[i].selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage});
 					inserted = true;
 					break;
 				}
 			}
 			if (!inserted) {
-				ret.posts.push({postId: 'pid_' + pid, postType: type, posterImage: rows[index].image, posterUuid: rows[index].uid, posterId: rows[index].prefix + ' ' + rows[index].name, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection}], likes: likes, comments: comments});
+				ret.posts.push({postId: 'pid_' + pid, postType: type, posterImage: rows[index].image, posterUuid: rows[index].uid, posterId: rows[index].prefix + ' ' + rows[index].name, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage}], likes: likes, comments: comments});
 			}
 			inserted = false;
 		}
 		res.json(ret);
 	});
+	}
 }); 
 
 router.get('/result/:poll_id', (req, res) => {
@@ -257,7 +259,9 @@ router.post('/postbalance', (req, res) => {
 		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
 			var pid = rows[0].newpid;
 			async.forEachOf(selections, (selection, index, callback) => {
-				db.query('INSERT INTO selection (pid, content) VALUES (?, ?)', [pid, selection], (err, rows) => {
+				var label = selection.label;
+				var image = selection.image;
+				db.query('INSERT INTO selection (pid, content, image) VALUES (?, ?, ?)', [pid, label, image], (err, rows) => {
 					if (err) callback(err);
 					callback(null);
 				});
@@ -270,7 +274,7 @@ router.post('/postbalance', (req, res) => {
 							if (row.image != '') {
 								var ext = row.image.split(';base64,')[0].split('/').pop();
 								var b64 = row.image.split(';base64,').pop();
-								fs.writeFile('image/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
+								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
 								var url = 'https://devcap.duckdns.og/images/selection/sid_' + row.sid + '.' + ext;
 								db.query('UPDATE selection SET image = ? WHERE sid = ?', [url, row.sid], (err, rows) => {
 									if (err) throw err;

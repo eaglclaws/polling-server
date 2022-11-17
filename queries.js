@@ -71,7 +71,7 @@ const getPosts =
     ') AS total ' +
 ') AS poll ' +
 'INNER JOIN ( ' +
-    'SELECT pid, sid, content AS selection ' +
+    'SELECT pid, sid, content AS selection, image AS simage ' +
     'FROM selection ' +
 ') AS selection ON poll.pid = selection.pid;';
 
@@ -116,7 +116,7 @@ const getPostById =
     ') AS total ' +
 ') AS poll ' +
 'INNER JOIN ( ' +
-    'SELECT pid, sid, content AS selection ' +
+    'SELECT pid, sid, content AS selection, image AS simage ' +
     'FROM selection ' +
 ') AS selection ON poll.pid = selection.pid;';
 

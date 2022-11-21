@@ -42,6 +42,30 @@ router.get('/top/:type/:index', (req, res) => {
 	var index = parseInt(req.params.index);
 	var ret = {posts: [], size: 0};
 	if (req.params.type == 'battle') {
+		db.query(queries.battlePosts, (err, rows) => {
+			console.log(typeof(rows));
+			for (var index = 0; index < rows.length; index += 2) {
+				ret.posts.push({
+					postId: 'pid_' + rows[index].pid,
+					timeLeft: rows[index].time,
+					userCount: rows[index].count,
+					textA: {
+						selectionId: 'sid_' + rows[index].sid,
+						text: rows[index].selection,
+						image: rows[index].simage
+					},
+					textB: {
+						selectionId: 'sid_' + rows[index + 1].sid,
+						text: rows[index + 1].selection,
+						image: rows[index + 1].simage
+					}
+				});
+			}
+			ret.size = rows.length / 2;
+			res.json(ret);
+			return;
+		});
+		/*
 		res.json({posts: [{
     postId: 29,
     timeLeft: 52,
@@ -60,9 +84,15 @@ router.get('/top/:type/:index', (req, res) => {
     userCount: 183,
     selection: [{text: '민초파'}, {text: '반민초파'}],
 }]});
+return;*/
 	} else {
 	db.query(queries.getPosts, [req.params.type, index * 10, req.params.type], (err, rows) => {
 		if (err) throw err;
+		if (rows[0] == undefined) {
+			res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
+			res.status(400).send(res.statusMessage);
+			return;
+		}
 		ret.size = rows[0].total;
 		for (var index in rows) {
 			var {pid, type, content, time, name, count, likes, comments} = rows[index];
@@ -83,6 +113,16 @@ router.get('/top/:type/:index', (req, res) => {
 	});
 	}
 }); 
+
+router.get('/battleresult/:pid', (req, res) => {
+	db.query(queries.battleResult, [req.params.pid.split('_')[1]], (err, rows) => {
+		if (rows[0] == undefined) {
+			res.json({percentA: 0});
+			return;
+		}
+		res.json({percentA: rows[0].percent});
+	});
+});
 
 router.get('/result/:poll_id', (req, res) => {
 	console.log('result/:poll_id');

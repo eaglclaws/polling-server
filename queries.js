@@ -123,6 +123,34 @@ const getPostById =
 
 const countAllPosts = 'SELECT COUNT(*) as sum FROM poll';
 
+const battlePosts =
+'SELECT * ' +
+'FROM ( ' +
+'    SELECT poll.*, TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), battle.end) AS time ' +
+'    FROM ( ' +
+'        SELECT poll.*, COALESCE(count, 0) AS count ' +
+'        FROM ( ' +
+'            SELECT poll.pid, user.uid, user.prefix, user.name, user.image ' +
+'            FROM ( ' +
+'                SELECT pid, uid ' +
+'                FROM poll ' +
+'                WHERE type = \'battle\' ' +
+'            ) AS poll ' +
+'            INNER JOIN user ON poll.uid = user.uid ' +
+'        ) AS poll ' +
+'        LEFT JOIN ( ' +
+'            SELECT pid, COUNT(*) AS count ' +
+'            FROM polldone ' +
+'            GROUP BY pid ' +
+'        ) AS polldone ON poll.pid = polldone.pid ' +
+'    ) AS poll ' +
+'    INNER JOIN battle ON poll.pid = battle.pid ' +
+') AS poll ' +
+'INNER JOIN ( ' +
+'    SELECT pid, sid, content AS selection, image AS simage ' +
+'    FROM selection ' +
+') AS selection ON poll.pid = selection.pid; ';
+
 const getResult =
 'SELECT selectionId, content, percent ' +
 'FROM (' +
@@ -280,7 +308,7 @@ const userLookup =
 'ORDER BY user.uid;';
 
 const getBattle =
-'select poll.*, selection.sid, selection.content ' +
+'select poll.*, selection.sid, selection.content, selection.image AS simage ' +
 'from ( ' +
 'select poll.pid, type, TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) as timeleft ' +
 'from poll ' +
@@ -297,4 +325,9 @@ const getComments =
 	'select uid, sid from polldone where pid = ? ' +
 ') as polldone on comment.uid = polldone.uid; ';
 
-module.exports = {getPostById, getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};
+const battleResult =
+'SELECT sid, COUNT(*) * 100 / SUM(COUNT(*)) OVER () AS percent ' +
+'FROM polldone WHERE pid = ? ' +
+'GROUP BY sid; ';
+
+module.exports = {battleResult, battlePosts, getPostById, getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};

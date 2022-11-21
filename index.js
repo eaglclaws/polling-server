@@ -211,6 +211,20 @@ app.post('/nulltester', (req, res) => {
 	res.json({response: req.body.foo == null});
 });
 
+app.delete('/deletepost/:pid', (req, res) => {
+	var pid = req.params.pid;
+	db.query('DELETE FROM battle WHERE pid = ?', [pid], (err, rows) => {
+		db.query('DELETE FROM comment WHERE pid = ?', [pid], (err, rows) => {
+			
+		});
+	});
+});
+
+app.get('/updatesel', (req, res) => {
+	db.query('UPDATE selection SET content = ? WHERE sid = 74', ['반민초파']);
+	res.sendStatus(200);
+});
+
 app.listen(port, () => {
 	console.log(`Polling server listening on port ${port}`);
 });

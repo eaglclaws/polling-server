@@ -28,7 +28,7 @@ router.post('/login', (req, res) => {
 			db.query('SELECT * FROM user WHERE uid = ?', [uid], (err, rows) => {
 				if (err) throw err;
 				console.log('login successful');
-				res.json({UUID: uid, isNew: rows.length == 0});
+				res.json({UUID: uid, isNew: rows.length == 0, isAdmin: rows[0].admin == 1});
 			});
 		})
 		.catch((error) => {
@@ -47,10 +47,10 @@ router.post('/signup', (req, res) => {
 	var profile = req.body.profile;
 	var birthday = req.body.birthday;
 	var bdaypholder = 'DATE_SUB(CURRENT_DATE(), INTERVAL ' + age + ' YEAR)'
-	if (birthday == null) {
+	if (birthday == '' || birthday == null) {
 		birthday = bdaypholder;
 	}
-	if (profile == null) {
+	if (profile == '' || profile == null) {
 		profile = url + 'profile0.png';
 	}
 	if (uid.length != 28) {
@@ -83,7 +83,8 @@ router.get('/allprefix', (req, res) => {
 router.get('/profile/:user/:target', (req, res) => {
 	db.query(queries.userLookup, [req.params.target], (err, rows) => {
 		if (req.params.user == 'null' && req.params.target == 'null') {
-			res.json({isMyProfile: false, name: 'GUEST', prefix: '', ownPrefixList: [], profileImg: 'https://i.imgur.com/Z3P15Dj.png'})
+			res.json({isMyProfile: false, name: 'GUEST', prefix: '', ownPrefixList: [], profileImg: 'https://i.imgur.com/Z3P15Dj.png'});
+			return;
 		}
 		var ret = {isMyProfile: req.params.user == req.params.target, name: rows[0].name, prefix: rows[0].prefix, ownPrefixList: [], profileImg: rows[0].image};
 		for (var index in rows) {
@@ -118,11 +119,11 @@ router.post('/imagechange', (req, res) => {
 	});
 });
 
-router.get('/profimgs', (req, res) => {
+router.get('/profimgs/:uid', (req, res) => {
 	var files = fs.readdirSync('./images/profile').length;
-	var ret = {images: []};
+	var ret = {ownProfileImageList: []};
 	for (var i = 0; i < files; i++) {
-		ret.images.push(hostUrl + 'images/profile/profile' + i + '.png');
+		ret.ownProfileImageList.push({imgId: i, profileImg: hostUrl + 'images/profile/profile' + i + '.png'});
 	}
 	res.json(ret);
 });

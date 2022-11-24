@@ -330,4 +330,18 @@ const battleResult =
 'FROM polldone WHERE pid = ? ' +
 'GROUP BY sid; ';
 
-module.exports = {battleResult, battlePosts, getPostById, getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};
+const battleChats =
+'SELECT poll.*, TIMESTAMPDIFF(MINUTE, battlechat.time, CURRENT_TIMESTAMP()) AS time, battlechat.content ' +
+'FROM ( ' +
+'	SELECT poll.*, user.image, user.prefix, user.name ' +
+'	FROM ( ' +
+'		SELECT poll.*, polldone.uid, polldone.sid ' +
+'		FROM (SELECT pid FROM poll WHERE pid = ?) AS poll ' +
+'		INNER JOIN polldone ON poll.pid = polldone.pid ' +
+'	) AS poll ' +
+'	INNER JOIN user ON poll.uid = user.uid ' +
+') AS poll ' +
+'INNER JOIN battlechat ON poll.pid = battlechat.pid AND poll.uid = battlechat.uid ' +
+'ORDER BY battlechat.time DESC; ';
+
+module.exports = {battleChats, battleResult, battlePosts, getPostById, getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};

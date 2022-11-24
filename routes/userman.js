@@ -144,4 +144,12 @@ router.get('/rawuserdata/:uid', (req, res) => {
 	});
 });
 
+router.post('/update/usertoken', (req, res) => {
+	var uid = req.body.UUID;
+	var tok = req.body.token;
+	db.query('UPDATE user SET fcm = ? WHERE uid = ?', [tok, uid], (err, rows) => {
+		res.sendStatus(200);
+	});
+});
+
 module.exports = router;

@@ -335,6 +335,50 @@ router.post('/postbalance', (req, res) => {
 	});
 });
 
+router.get('/battlechat/:pid', (req, res) => {
+	db.query(queries.battleChats, [req.params.pid.split('_')[1]], (err, rows) => {
+		var ret = {chats: []};
+		var one = null;
+		var two = null;
+		for (var index in rows) {
+			var pfp = rows[index].image;
+			var name = rows[index].prefix + ' ' + rows[index].name;
+			var select = rows[index].sid;
+			var time = rows[index].time;
+			ret.chats.push({
+				profileImage: pfp,
+				posterId: name,
+				selectNum: select,
+				content: rows[index].content,
+				time: time
+			});
+			if (one == null && two == null) {
+				one = select;
+			} else if (one != null && two == null) {
+				if (select > one) {
+					two = select;
+				} else {
+					two = one;
+					one = select;
+				}
+			}
+		}
+		for (var index in ret.chats) {
+			ret.chats[index].selectNum = ret.chats[index].selectNum == one ? 1 : 2;
+		}
+		res.json(ret);
+	});
+});
+
+router.post('/upload/chat', (req, res) => {
+	var uid = req.body.UUID;
+	var pid = req.body.postId.split('_')[1];
+	var content = req.body.content;
+	db.query('INSERT INTO battlechat (uid, pid, content) VALUES (?, ?, ?)', [uid, pid, content], (err, rows) => {
+		res.sendStatus(200);
+	});
+});
+
 router.get('/testnull', (req, res) => {
 	db.query('SELECT image FROM selection WHERE pid = 37', (err, rows) => {
 		for (var index in rows) {

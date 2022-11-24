@@ -19,7 +19,7 @@ const api = router.route('/');
 const FDL = require('firebase-dynamic-links');
 const fdl = new FDL.FirebaseDynamicLinks('AIzaSyD4OXIGO-t86tsvYqMqVX3C2axRiS6inrE');
 const fileUpload = require('express-fileupload');
-
+const hostUrl = 'http://devcap.duckdns.org:57043/';
 app.use(bodyParser.json({limit: '100mb'}));
 app.use(morgan('dev'));
 app.use('/images', express.static(__dirname + '/images'));
@@ -223,6 +223,56 @@ app.delete('/deletepost/:pid', (req, res) => {
 app.get('/updatesel', (req, res) => {
 	db.query('UPDATE selection SET content = ? WHERE sid = 74', ['반민초파']);
 	res.sendStatus(200);
+});
+
+app.get('/admin/uids', (req, res) => {
+	var ret = {uids: []};
+	db.query('SELECT uid FROM user ORDER BY uid', (err, rows) => {
+		for (var index in rows) {
+			ret.uids.push(rows[index].uid);
+		}
+		res.json(ret);
+	});
+});
+
+app.get('/pushtest', (req, res) => {
+	var tokens = [];
+	db.query('SELECT fcm AS token FROM user WHERE NOT fcm = NULL', (err, rows) => {
+		for (var index in rows) {
+			tokens.push(rows[index].token);
+		}
+		const message = {
+			tokens: tokens,
+			notification: {
+				body: '이미지 첨부된 푸시알림',
+				title: '테스트 알림',
+			},
+			apns: {
+				payload: {
+					aps: {
+						'mutable-content': 1,
+					},
+				},
+				fcm_options: {
+					image: hostUrl + 'images/pushtest/image.jpeg',
+				},
+			},
+			android: {
+				notification: {
+					image: hostUrl + 'images/pushtest/image.jpeg',
+				},
+			},
+		};
+		admin
+			.messaging()
+			.send(message)
+			.then(response => {
+				console.log('Successfully sent message:', response);
+			})
+			.catch(error => {
+				console.log('Error sending message:', error);
+			});
+	});
 });
 
 app.listen(port, () => {

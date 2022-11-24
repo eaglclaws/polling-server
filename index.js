@@ -20,6 +20,7 @@ const FDL = require('firebase-dynamic-links');
 const fdl = new FDL.FirebaseDynamicLinks('AIzaSyD4OXIGO-t86tsvYqMqVX3C2axRiS6inrE');
 const fileUpload = require('express-fileupload');
 const hostUrl = 'http://devcap.duckdns.org:57043/';
+const cron = require('node-cron');
 app.use(bodyParser.json({limit: '100mb'}));
 app.use(morgan('dev'));
 app.use('/images', express.static(__dirname + '/images'));
@@ -57,25 +58,6 @@ app.get('/', (req, res) => {
 	res.send('Hello World!<br><a href="/posts">Test Database!</a>');
 });
 
-app.post('/login', (req, res) => {
-	console.log('login');
-	console.log(req.body);
-	var idToken = req.body.token;
-	admin.auth()
-		.verifyIdToken(idToken)
-		.then((decodedToken) => {
-			const uid = decodedToken.uid;
-			db.query('SELECT * FROM user WHERE uid = ?', [uid], (err, rows) => {
-				if (err) throw err;
-				console.log('login successful');
-				res.json({UUID: uid, isNew: rows.length == 0});
-			});
-		})
-		.catch((error) => {
-			res.sendStatus(500);
-		});
-});
-
 app.get('/db', (req, res) => {
 	var sql = `SHOW TABLES`;
 	db.query(sql, (err, data, fields) => {
@@ -88,9 +70,14 @@ app.get('/db', (req, res) => {
 	});
 });
 
+app.get('/giveadmin/:uid', (req, res) => {
+	db.query('UPDATE user SET admin = TRUE WHERE uid = ?', [req.params.uid], (err, rows) => {
+		if (err) throw err;
+		res.sendStatus(200);
+	});
+});
+
 app.get('/posts/:index', (req, res) => {
-	console.log('posts/:index');
-	console.log(req.params);
 	var tasks = [
 		function (callback) {
 			db.query(queries.countAllPosts, (err, row) => {
@@ -156,8 +143,8 @@ app.get('/comments/:pid', (req, res) => {
 	db.query(queries.getComments, [pid, pid], (err, rows) => {
 		var ret = {comments: []};
 		for (var index in rows) {
-			var {uid, image, prefix, name, content, sid, time} = rows[index];
-			ret.comments.push({profileImage: image, posterUuid: uid, posterId: prefix + ' ' + name, selectNum: sid, content: content, timeBefore: time});
+			var {uid, image, prefix, name, content, sid, time, link} = rows[index];
+			ret.comments.push({profileImage: image, posterUuid: uid, posterId: prefix + ' ' + name, selectNum: sid, content: content, timeBefore: time, link: link == null ? null : 'pid_' + link});
 		}
 		res.json(ret);
 	});
@@ -199,7 +186,6 @@ app.get('/dynamiclink/:pid', async (req, res) => {
 });
 
 app.post('/testfileup', (req, res) => {
-	console.log(req.body.selection);
 	var file = req.files.image;
 	var path = './images/selection/'
 	var name = file.name.split('.');
@@ -237,7 +223,7 @@ app.get('/admin/uids', (req, res) => {
 
 app.get('/pushtest', (req, res) => {
 	var tokens = [];
-	db.query('SELECT fcm AS token FROM user WHERE NOT fcm = NULL', (err, rows) => {
+	db.query('SELECT fcm AS token FROM user WHERE NOT fcm = \'NULL\'', (err, rows) => {
 		for (var index in rows) {
 			tokens.push(rows[index].token);
 		}
@@ -262,16 +248,92 @@ app.get('/pushtest', (req, res) => {
 					image: hostUrl + 'images/pushtest/image.jpeg',
 				},
 			},
+			data: {
+				postId: 'pid_1',
+				postType: 'polling',
+			}
 		};
 		admin
 			.messaging()
-			.send(message)
+			.sendMulticast(message)
 			.then(response => {
 				console.log('Successfully sent message:', response);
+				res.sendStatus(200);
 			})
 			.catch(error => {
 				console.log('Error sending message:', error);
 			});
+	});
+});
+
+app.post('/login', (req, res) => {
+	var idToken = req.body.token;
+	admin.auth()
+		.verifyIdToken(idToken)
+		.then((decodedToken) => {
+			const uid = decodedToken.uid;
+			db.query('SELECT * FROM user WHERE uid = ?', [uid], (err, rows) => {
+				if (err) throw err;
+				console.log('login successful');
+				res.json({UUID: uid, isNew: rows.length == 0, isAdmin: rows[0].admin == 1});
+			});
+		})
+		.catch((error) => {
+			res.sendStatus(500);
+		});
+});
+
+
+cron.schedule('* * * * *', () => {
+	console.log('Checking finished battles');
+	var tokens = [];
+	db.query('SELECT TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) AS time, pid FROM battle', (err, rows) => {
+		for (var index in rows) {
+			if (rows[index].time == 0) {
+				var pid = rows[index].pid;
+				db.query('SELECT fcm as token FROM polldone INNER JOIN user on polldone.uid = user.uid where pid = ? and not fcm = \'NULL\'', [rows[index].pid], (err, rows) => {
+					db.query('DELETE FROM battlechat WHERE pid = ?', [pid]);
+					for (var index in rows) {
+						tokens.push(rows[index].token);
+					}
+					const message = {
+						tokens: tokens,
+						notification: {
+							body: '사용자님께서 참여하신 배틀 투표가 끝났어요!',
+							title: '폴링 - 배틀 투표',
+						},
+						apns: {
+							payload: {
+								aps: {
+									'mutable-content': 1,
+								},
+							},
+							fcm_options: {
+								image: hostUrl + 'images/pushtest/image.jpeg',
+							},
+						},
+						android: {
+							notification: {
+								image: hostUrl + 'images/pushtest/image.jpeg',
+							},
+						},
+						data: {
+							postId: 'pid_' + pid,
+							postType: 'battle',
+						}
+					};
+					admin
+						.messaging()
+						.sendMulticast(message)
+						.then(response => {
+							console.log('Successfully sent message:', response);
+						})
+						.catch(error => {
+							console.log('Error sending message:', error);
+						});
+				});
+			}
+		}
 	});
 });
 

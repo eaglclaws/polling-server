@@ -25,6 +25,7 @@
     "firebase-dynamic-links": "^1.1.1",
     "morgan": "^1.10.0",
     "mysql": "^2.18.1",
+    "node-cron": "^3.0.2",
     "python-bridge": "^1.1.0",
     "regexp.escape": "^1.1.0",
     "remove-stopwords": "^1.0.3",

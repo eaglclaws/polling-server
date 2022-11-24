@@ -126,7 +126,7 @@ const countAllPosts = 'SELECT COUNT(*) as sum FROM poll';
 const battlePosts =
 'SELECT * ' +
 'FROM ( ' +
-'    SELECT poll.*, TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), battle.end) AS time ' +
+'    SELECT poll.*, TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), battle.end) AS time, battle.prefix AS bprefix, battle.image AS bimage' +
 '    FROM ( ' +
 '        SELECT poll.*, COALESCE(count, 0) AS count ' +
 '        FROM ( ' +
@@ -134,7 +134,7 @@ const battlePosts =
 '            FROM ( ' +
 '                SELECT pid, uid ' +
 '                FROM poll ' +
-'                WHERE type = \'battle\' ' +
+'                WHERE type = \'battle\' ORDER BY time DESC LIMIT 10 OFFSET ? ' +
 '            ) AS poll ' +
 '            INNER JOIN user ON poll.uid = user.uid ' +
 '        ) AS poll ' +
@@ -304,7 +304,7 @@ const userLookup =
 	'FROM user ' +
 	'WHERE uid = ? ' +
 ') AS user ' +
-'INNER JOIN userprefix ON user.uid = userprefix.uid ' +
+'LEFT JOIN userprefix ON user.uid = userprefix.uid ' +
 'ORDER BY user.uid;';
 
 const getBattle =
@@ -318,7 +318,7 @@ const getBattle =
 
 const getComments =
 'select comment.*, COALESCE(polldone.sid, 0) as sid ' +
-'from (select user.uid, user.image, user.prefix, user.name, content, TIMESTAMPDIFF(MINUTE, time, CURRENT_TIMESTAMP) as time from ' +
+'from (select user.uid, user.image, user.prefix, user.name, content, TIMESTAMPDIFF(MINUTE, time, CURRENT_TIMESTAMP) as time, link from ' +
 'comment inner join user on comment.uid = user.uid ' +
 'where pid = ?) as comment ' +
 'left join ( ' +
@@ -329,6 +329,8 @@ const battleResult =
 'SELECT sid, COUNT(*) * 100 / SUM(COUNT(*)) OVER () AS percent ' +
 'FROM polldone WHERE pid = ? ' +
 'GROUP BY sid; ';
+
+const battleCountTime = 'SELECT * FROM (SELECT COUNT(*) AS userCount FROM polldone WHERE pid = ?) AS tot, (SELECT TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) AS time FROM battle WHERE pid = ?) AS time;';
 
 const battleChats =
 'SELECT poll.*, TIMESTAMPDIFF(MINUTE, battlechat.time, CURRENT_TIMESTAMP()) AS time, battlechat.content ' +
@@ -344,4 +346,145 @@ const battleChats =
 'INNER JOIN battlechat ON poll.pid = battlechat.pid AND poll.uid = battlechat.uid ' +
 'ORDER BY battlechat.time DESC; ';
 
-module.exports = {battleChats, battleResult, battlePosts, getPostById, getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};
+const searchPosts =
+'SELECT poll.*, selection.* ' +
+'FROM ( ' +
+    'SELECT poll.*, total ' +
+    'FROM ( ' +
+        'SELECT poll.*, COALESCE(comment.count, 0) as comments ' +
+        'FROM ( ' +
+            'SELECT poll.*, COALESCE(polllikes.count, 0) as likes ' +
+            'FROM ( ' +
+                'SELECT poll.*, COALESCE(polldone.count, 0) AS count ' +
+                'FROM ( ' +
+                    'SELECT poll.pid, poll.type, poll.content, TIMESTAMPDIFF(MINUTE, poll.time, CURRENT_TIMESTAMP()) AS time, user.uid, user.image, user.prefix, user.name ' +
+                    'FROM ( ' +
+                        'SELECT * FROM poll ' +
+                        'WHERE content LIKE ? AND NOT type = \'battle\'' +
+                    ') AS poll ' +
+                    'INNER JOIN user ON poll.uid = user.uid ' +
+                    'ORDER BY time LIMIT 10 OFFSET ? ' +
+                ') AS poll ' +
+                'LEFT JOIN ( ' +
+                    'SELECT pid, COUNT(*) as count ' +
+                    'FROM polldone ' +
+                    'GROUP BY pid ' +
+                ') AS polldone ON poll.pid = polldone.pid ' +
+            ') AS poll ' +
+            'LEFT JOIN ( ' +
+                'SELECT pid, COUNT(*) as count ' +
+                'FROM polllikes ' +
+                'GROUP BY pid ' +
+            ') AS polllikes ON poll.pid = polllikes.pid ' +
+        ') AS poll ' +
+        'LEFT JOIN ( ' +
+            'SELECT pid, COUNT(*) as count ' +
+            'FROM comment ' +
+            'GROUP BY pid ' +
+        ') AS comment ON poll.pid = comment.pid ' +
+    ') AS poll, ( ' +
+        'SELECT COUNT(*) AS total ' +
+        'FROM poll ' +
+        'WHERE content LIKE ? AND NOT type =\'battle\' ' +
+    ') AS total ' +
+') AS poll ' +
+'INNER JOIN ( ' +
+    'SELECT pid, sid, content AS selection, image AS simage ' +
+    'FROM selection ' +
+') AS selection ON poll.pid = selection.pid;';
+
+const madePosts =
+'SELECT poll.*, selection.* ' +
+'FROM ( ' +
+    'SELECT poll.*, total ' +
+    'FROM ( ' +
+        'SELECT poll.*, COALESCE(comment.count, 0) as comments ' +
+        'FROM ( ' +
+            'SELECT poll.*, COALESCE(polllikes.count, 0) as likes ' +
+            'FROM ( ' +
+                'SELECT poll.*, COALESCE(polldone.count, 0) AS count ' +
+                'FROM ( ' +
+                    'SELECT poll.pid, poll.type, poll.content, TIMESTAMPDIFF(MINUTE, poll.time, CURRENT_TIMESTAMP()) AS time, user.uid, user.image, user.prefix, user.name ' +
+                    'FROM ( ' +
+                        'SELECT * FROM poll ' +
+                        'WHERE uid = ? AND type = ? ' +
+                    ') AS poll ' +
+                    'INNER JOIN user ON poll.uid = user.uid ' +
+                    'ORDER BY time LIMIT 10 OFFSET ? ' +
+                ') AS poll ' +
+                'LEFT JOIN ( ' +
+                    'SELECT pid, COUNT(*) as count ' +
+                    'FROM polldone ' +
+                    'GROUP BY pid ' +
+                ') AS polldone ON poll.pid = polldone.pid ' +
+            ') AS poll ' +
+            'LEFT JOIN ( ' +
+                'SELECT pid, COUNT(*) as count ' +
+                'FROM polllikes ' +
+                'GROUP BY pid ' +
+            ') AS polllikes ON poll.pid = polllikes.pid ' +
+        ') AS poll ' +
+        'LEFT JOIN ( ' +
+            'SELECT pid, COUNT(*) as count ' +
+            'FROM comment ' +
+            'GROUP BY pid ' +
+        ') AS comment ON poll.pid = comment.pid ' +
+    ') AS poll, ( ' +
+        'SELECT COUNT(*) AS total ' +
+        'FROM poll ' +
+        'WHERE uid = ? AND type = ? ' +
+    ') AS total ' +
+') AS poll ' +
+'INNER JOIN ( ' +
+    'SELECT pid, sid, content AS selection, image AS simage ' +
+    'FROM selection ' +
+') AS selection ON poll.pid = selection.pid;';
+
+const donePosts =
+'SELECT poll.*, selection.* ' +
+'FROM ( ' +
+    'SELECT poll.*, total ' +
+    'FROM ( ' +
+        'SELECT poll.*, COALESCE(comment.count, 0) as comments ' +
+        'FROM ( ' +
+            'SELECT poll.*, COALESCE(polllikes.count, 0) as likes ' +
+            'FROM ( ' +
+                'SELECT poll.*, COALESCE(polldone.count, 0) AS count ' +
+                'FROM ( ' +
+                    'SELECT poll.pid, poll.type, poll.content, TIMESTAMPDIFF(MINUTE, poll.time, CURRENT_TIMESTAMP()) AS time, user.uid, user.image, user.prefix, user.name ' +
+                    'FROM ( ' +
+                        'SELECT * FROM poll ' +
+                        'WHERE pid IN ( SELECT pid FROM polldone WHERE uid = ? ) AND type = ? ' +
+                    ') AS poll ' +
+                    'INNER JOIN user ON poll.uid = user.uid ' +
+                    'ORDER BY time LIMIT 10 OFFSET ? ' +
+                ') AS poll ' +
+                'LEFT JOIN ( ' +
+                    'SELECT pid, COUNT(*) as count ' +
+                    'FROM polldone ' +
+                    'GROUP BY pid ' +
+                ') AS polldone ON poll.pid = polldone.pid ' +
+            ') AS poll ' +
+            'LEFT JOIN ( ' +
+                'SELECT pid, COUNT(*) as count ' +
+                'FROM polllikes ' +
+                'GROUP BY pid ' +
+            ') AS polllikes ON poll.pid = polllikes.pid ' +
+        ') AS poll ' +
+        'LEFT JOIN ( ' +
+            'SELECT pid, COUNT(*) as count ' +
+            'FROM comment ' +
+            'GROUP BY pid ' +
+        ') AS comment ON poll.pid = comment.pid ' +
+    ') AS poll, ( ' +
+        'SELECT COUNT(*) AS total ' +
+        'FROM poll ' +
+        'WHERE uid = ? AND type = ? ' +
+    ') AS total ' +
+') AS poll ' +
+'INNER JOIN ( ' +
+    'SELECT pid, sid, content AS selection, image AS simage ' +
+    'FROM selection ' +
+') AS selection ON poll.pid = selection.pid;';
+
+module.exports = {battleCountTime, donePosts, madePosts, searchPosts, battleChats, battleResult, battlePosts, getPostById, getComments, userLookup, getPosts, detailMbti, detailAge, detailGender, topTenPosts, countAllPosts, getResult, getByGender, getByAge, getByJob, getByMbti, getLastUid, recTag, searchTag, topTags};

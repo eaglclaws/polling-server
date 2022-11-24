@@ -17,28 +17,7 @@ const serviceAccount = require('/home/seokhyeon/.firebase/serviceAccountKey.json
 const fs = require('fs');
 const hostUrl = 'http://devcap.duckdns.org:57043/'
 
-router.post('/login', (req, res) => {
-	console.log('login');
-	console.log(req.body);
-	var idToken = req.body.token;
-	admin.auth()
-		.verifyIdToken(idToken)
-		.then((decodedToken) => {
-			const uid = decodedToken.uid;
-			db.query('SELECT * FROM user WHERE uid = ?', [uid], (err, rows) => {
-				if (err) throw err;
-				console.log('login successful');
-				res.json({UUID: uid, isNew: rows.length == 0, isAdmin: rows[0].admin == 1});
-			});
-		})
-		.catch((error) => {
-			res.sendStatus(500);
-		});
-});
-
 router.post('/signup', (req, res) => {
-	console.log('signup');
-	console.log(req.body);
 	var uid = req.body.UUID;
 	var gender = req.body.gender;
 	var age = req.body.age;
@@ -64,7 +43,10 @@ router.post('/signup', (req, res) => {
 			if (err) throw err;
 			db.query('UPDATE usernames SET used = TRUE WHERE name = ?', [name], (err, rows) => {
 				if (err) throw err;
-				res.sendStatus(200);
+				db.query('INSERT INTO userprefix (uid, prefix) VALUES (?, ?)', [uid, prefix], (err, rows) => {
+					if (err) throw err;
+					res.sendStatus(200);
+				});
 			});
 		});
 	});
@@ -84,6 +66,11 @@ router.get('/profile/:user/:target', (req, res) => {
 	db.query(queries.userLookup, [req.params.target], (err, rows) => {
 		if (req.params.user == 'null' && req.params.target == 'null') {
 			res.json({isMyProfile: false, name: 'GUEST', prefix: '', ownPrefixList: [], profileImg: 'https://i.imgur.com/Z3P15Dj.png'});
+			return;
+		}
+		if (rows[0] == undefined) {
+			res.statusMessage = "Invalid request, database returned empty set";
+			res.status(400).send(res.statusMessage);
 			return;
 		}
 		var ret = {isMyProfile: req.params.user == req.params.target, name: rows[0].name, prefix: rows[0].prefix, ownPrefixList: [], profileImg: rows[0].image};

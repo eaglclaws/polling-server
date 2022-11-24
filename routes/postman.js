@@ -18,6 +18,7 @@ const fs = require('fs');
 router.get('/view/:pid', (req, res) => {
 	var pid = parseInt(req.params.pid.split('_')[1]);
 	db.query(queries.getPostById, [pid], (err, rows) => {
+		if (err) throw err;
 		var ret = {
 			postId: 'pid_' + rows[0].pid,
 			postType: rows[0].type,
@@ -42,12 +43,16 @@ router.get('/top/:type/:index', (req, res) => {
 	var index = parseInt(req.params.index);
 	var ret = {posts: [], size: 0};
 	if (req.params.type == 'battle') {
-		db.query(queries.battlePosts, (err, rows) => {
-			console.log(typeof(rows));
+		db.query(queries.battlePosts, [parseInt(req.params.index) * 10], (err, rows) => {
+			if (rows[0] == undefined) {
+				res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
+				res.status(400).send(res.statusMessage);
+				return;
+			}
 			for (var index = 0; index < rows.length; index += 2) {
 				ret.posts.push({
 					postId: 'pid_' + rows[index].pid,
-					timeLeft: rows[index].time,
+					timeLeft: rows[index].time > 0 ? rows[index].time : 0,
 					userCount: rows[index].count,
 					textA: {
 						selectionId: 'sid_' + rows[index].sid,
@@ -58,33 +63,17 @@ router.get('/top/:type/:index', (req, res) => {
 						selectionId: 'sid_' + rows[index + 1].sid,
 						text: rows[index + 1].selection,
 						image: rows[index + 1].simage
-					}
+					},
+					prefix: rows[index].bprefix,
+					profileImg: rows[index].bimage
 				});
 			}
-			ret.size = rows.length / 2;
-			res.json(ret);
+			db.query('SELECT COUNT(*) AS size FROM poll WHERE type = \'battle\'', (err, rows) => {
+				ret.size = rows[0].size;
+				res.json(ret);
+			});
 			return;
 		});
-		/*
-		res.json({posts: [{
-    postId: 29,
-    timeLeft: 52,
-    userCount: 252,
-    selection: [{text: '부먹'}, {text: '찍먹'}],
-},
-{
-    postId: 30,
-    timeLeft: 60,
-    userCount: 375,
-    selection: [{text: '버스'}, {text: '전철'}],
-},
-{
-    postId: 31,
-    timeLeft: 26,
-    userCount: 183,
-    selection: [{text: '민초파'}, {text: '반민초파'}],
-}]});
-return;*/
 	} else {
 	db.query(queries.getPosts, [req.params.type, index * 10, req.params.type], (err, rows) => {
 		if (err) throw err;
@@ -112,21 +101,157 @@ return;*/
 		res.json(ret);
 	});
 	}
-}); 
+});
 
-router.get('/battleresult/:pid', (req, res) => {
-	db.query(queries.battleResult, [req.params.pid.split('_')[1]], (err, rows) => {
+router.get('/getselection/:uid/:pid', (req, res) => {
+	db.query('SELECT sid FROM polldone WHERE uid = ? AND pid = ?', [req.params.uid, req.params.pid.split('_')[1]], (err, rows) => {
+		res.json({selection: rows[0] == undefined ? null : 'sid_' + rows[0].sid});
+	});
+});
+
+router.post('/search', (req, res) => {
+	var ret = {posts: [], size: 0};
+	db.query(queries.searchPosts, [`%${req.body.searchWord}%`, req.body.page_index * 10, `%${req.body.searchWord}%`], (err, rows) => {
+		if (err) throw err;
 		if (rows[0] == undefined) {
-			res.json({percentA: 0});
+			res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
+			res.status(400).send(res.statusMessage);
 			return;
 		}
-		res.json({percentA: rows[0].percent});
+		ret.size = rows[0].total;
+		for (var index in rows) {
+			var {pid, type, content, time, name, count, likes, comments} = rows[index];
+			var inserted = false;
+			for (var i in ret.posts) {
+				if (ret.posts[i].postId == 'pid_' + pid) {
+					ret.posts[i].selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage});
+					inserted = true;
+					break;
+				}
+			}
+			if (!inserted) {
+				ret.posts.push({postId: 'pid_' + pid, postType: type, posterImage: rows[index].image, posterUuid: rows[index].uid, posterId: rows[index].prefix + ' ' + rows[index].name, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage}], likes: likes, comments: comments});
+			}
+			inserted = false;
+		}
+		res.json(ret);
+	});
+});
+
+router.get('/madeby/:uid/:type/:index', (req, res) => {
+	var ret = {posts: [], size: 0};
+	db.query(queries.madePosts, [req.params.uid, req.params.type, req.params.index * 10, req.params.uid, req.params.type], (err, rows) => {
+		if (err) throw err;
+		if (rows[0] == undefined) {
+			res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
+			res.status(400).send(res.statusMessage);
+			return;
+		}
+		ret.size = rows[0].total;
+		for (var index in rows) {
+			var {pid, type, content, time, name, count, likes, comments} = rows[index];
+			var inserted = false;
+			for (var i in ret.posts) {
+				if (ret.posts[i].postId == 'pid_' + pid) {
+					ret.posts[i].selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage});
+					inserted = true;
+					break;
+				}
+			}
+			if (!inserted) {
+				ret.posts.push({postId: 'pid_' + pid, postType: type, posterImage: rows[index].image, posterUuid: rows[index].uid, posterId: rows[index].prefix + ' ' + rows[index].name, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage}], likes: likes, comments: comments});
+			}
+			inserted = false;
+		}
+		res.json(ret);
+	});
+});
+
+router.get('/doneby/:uid/:type/:index', (req, res) => {
+	var ret = {posts: [], size: 0};
+	db.query(queries.donePosts, [req.params.uid, req.params.type, req.params.index * 10, req.params.uid, req.params.type], (err, rows) => {
+		if (err) throw err;
+		if (rows[0] == undefined) {
+			res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
+			res.status(400).send(res.statusMessage);
+			return;
+		}
+		ret.size = rows[0].total;
+		for (var index in rows) {
+			var {pid, type, content, time, name, count, likes, comments} = rows[index];
+			var inserted = false;
+			for (var i in ret.posts) {
+				if (ret.posts[i].postId == 'pid_' + pid) {
+					ret.posts[i].selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage});
+					inserted = true;
+					break;
+				}
+			}
+			if (!inserted) {
+				ret.posts.push({postId: 'pid_' + pid, postType: type, posterImage: rows[index].image, posterUuid: rows[index].uid, posterId: rows[index].prefix + ' ' + rows[index].name, timeBefore: time, userCount: count, storyText: content, selection: [{selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage}], likes: likes, comments: comments});
+			}
+			inserted = false;
+		}
+		res.json(ret);
+	});
+});
+
+router.get('/battleresult/:pid', (req, res) => {
+	console.log(req.params.pid);
+	db.query(queries.battleResult, [req.params.pid.split('_')[1]], (err, rows) => {
+		var pid = req.params.pid.split('_')[1];
+		var row = rows;
+		db.query(queries.battleCountTime, [pid, pid], (err, rows) => {
+			if (row == undefined) {
+				res.json({percentA: 0});
+				return;
+			} else {
+				var percent = row[0].percent;
+				res.json({percentA: percent, userCount: rows[0].userCount, timeLeft: rows[0].time});
+			}
+		});
+	});
+});
+
+router.get('/battle/reward/:pid', (req, res) => {
+	db.query('SELECT prefix, image FROM battle WHERE pid = ?', [req.params.pid.split('_')[1]], (err, rows) => {
+		var ret = {profileImg: rows[0].image, prefix: rows[0].prefix};
+		db.query(queries.battleResult, [req.params.pid.split('_')[1]], (err, rows) => {
+			if (rows[0] == undefined) {
+				ret.percentA = 0;
+			} else { 
+				ret.percentA = rows[0].percent;
+			}
+			res.json(ret);
+		});
+	});
+});
+
+router.post('/upload/linkpoll', (req, res) => {
+	var {UUID, poll_name, selections, tag, postId} = req.body;
+	var ret = {selections: []};
+	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'link'], (err, rows) => {
+		if (err) throw err;
+		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
+			var pid = rows[0].newpid;
+			async.forEachOf(selections, (selection, index, callback) => {
+				var label = selection.label;
+				db.query('INSERT INTO selection (pid, content, image) VALUES (?, ?, NULL)', [pid, label], (err, rows) => {
+					if (err) callback(err);
+					callback(null);
+				});
+			}, (err) => {
+				if (err) throw err;
+				db.query('INSERT INTO comment (pid, uid, link, content) VALUES (?, ?, ?, \'\')', [postId.split('_')[1], UUID, pid], (err, rows) => {
+					if (err) throw err;
+					res.sendStatus(200);
+				});
+			});
+		});
 	});
 });
 
 router.get('/result/:poll_id', (req, res) => {
-	console.log('result/:poll_id');
-	console.log(req.params);
 	var pollId = req.params.poll_id.split('_')[1];
 	db.query(queries.getResult, [pollId, pollId], (err, rows) => {
 		if(err) throw err;
@@ -137,14 +262,11 @@ router.get('/result/:poll_id', (req, res) => {
 				rows[index].percent = 0.0;
 			}
 		}
-		console.log(rows);
 		res.json({selectionResult: rows});
 	});
 });
 
 router.get('/detail/gender/:poll_id/:is_male', (req, res) => {
-	console.log('detail/gender/:poll_id/:is_male');
-	console.log(req.params);
 	var pid = parseInt(req.params.poll_id.split('_')[1]);
 	var gen = req.params.is_male == 'true' ? 'M' : 'F';
 	db.query(queries.detailGender, [pid, gen], (err, rows) => {
@@ -231,8 +353,6 @@ router.get('/detail/mbti/:poll_id/:selectE/:selectS/:selectT/:selectJ', (req, re
 });
 
 router.post('/vote', (req, res) => {
-	console.log('vote');
-	console.log(req.body);
 	var {UUID, poll_id, sid} = req.body;
 	poll_id = parseInt(poll_id.split('_')[1]);
 	sid = parseInt(sid.split('_')[1]);
@@ -243,8 +363,6 @@ router.post('/vote', (req, res) => {
 });
 
 router.post('/postpolling', async (req, res) => {
-	console.log('postpolling');
-	console.log(req.body);
 	var {UUID, poll_name, selections, tag} = req.body;
 	tag = parseInt(tag.split('_')[1]);
 	var ret = {selections: []};
@@ -290,8 +408,6 @@ router.post('/postpolling', async (req, res) => {
 });
 
 router.post('/postbalance', (req, res) => {
-	console.log('postpolling');
-	console.log(req.body);
 	var {UUID, poll_name, selections, tag} = req.body;
 	tag = parseInt(tag.split('_')[1]);
 	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'balance'], (err, rows) => {
@@ -335,6 +451,55 @@ router.post('/postbalance', (req, res) => {
 	});
 });
 
+router.post('/postbattle', (req, res) => {
+	var {UUID, poll_name, selections} = req.body;
+	db.query('INSERT INTO poll (uid, content, type, time) VALUES (?, ?, ?, CURRENT_TIMESTAMP())', [UUID, poll_name, 'battle'], (err, rows) => {
+		if (err) throw err;
+		db.query('SELECT LAST_INSERT_ID() AS newpid', (err, rows) => {
+			var pid = rows[0].newpid;
+			async.forEachOf(selections, (selection, index, callback) => {
+				var label = selection.label;
+				var image = selection.image;
+				db.query('INSERT INTO selection (pid, content, image) VALUES (?, ?, ?)', [pid, label, image], (err, rows) => {
+					if (err) callback(err);
+					callback(null);
+				});
+			}, (err) => {
+				if (err) throw err;
+					if (err) throw err;
+					db.query('SELECT sid, image FROM selection WHERE pid = ?', [pid], (err, rows) => {
+						async.forEachOf(rows, (row, index, callback) => {
+							if (row.image != '') {
+								var ext = row.image.split(';base64,')[0].split('/').pop();
+								var b64 = row.image.split(';base64,').pop();
+								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
+								var url = 'http://devcap.duckdns.org:57043/images/selection/sid_' + row.sid + '.' + ext;
+								db.query('UPDATE selection SET image = ? WHERE sid = ?', [url, row.sid], (err, rows) => {
+									if (err) throw err;
+									callback(null);
+								});
+							} else {
+								db.query('UPDATE selection SET image = NULL WHERE sid = ?', [row.sid], (err, rows) => {
+									callback(null);
+								});
+							}
+						}, (err) => {
+							var ext = req.body.profileImg.split(';base64,')[0].split('/').pop();
+							var b64 = req.body.profileImg.split(';base64,').pop();
+							var fcount = fs.readdirSync('images/profile').length
+							fs.writeFile('images/profile/profile' + fcount + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
+							var url = 'http://devcap.duckdns.org:57043/images/profile' + fcount + '.' + ext;
+							db.query('INSERT INTO battle (pid, end, prefix, image) VALUES (?, TIMESTAMPADD(MINUTE, ?, CURRENT_TIMESTAMP()), ?, ?)', [pid, parseInt(req.body.endMinute), req.body.prefix, url], (err, rows) => {
+								if (err) throw err;				
+								res.sendStatus(200);
+							});
+						});
+					});
+			});
+		});
+	});
+});
+
 router.get('/battlechat/:pid', (req, res) => {
 	db.query(queries.battleChats, [req.params.pid.split('_')[1]], (err, rows) => {
 		var ret = {chats: []};
@@ -352,21 +517,15 @@ router.get('/battlechat/:pid', (req, res) => {
 				content: rows[index].content,
 				time: time
 			});
-			if (one == null && two == null) {
-				one = select;
-			} else if (one != null && two == null) {
-				if (select > one) {
-					two = select;
-				} else {
-					two = one;
-					one = select;
-				}
+		}
+		db.query('SELECT sid FROM selection WHERE pid = ? ORDER BY sid', [req.params.pid.split('_')[1]], (err, rows) => {
+			one = rows[0].sid;
+			two = rows[1].sid;
+			for (var index in ret.chats) {
+				ret.chats[index].selectNum = ret.chats[index].selectNum == one ? 1 : 2;
 			}
-		}
-		for (var index in ret.chats) {
-			ret.chats[index].selectNum = ret.chats[index].selectNum == one ? 1 : 2;
-		}
-		res.json(ret);
+			res.json(ret);
+		});
 	});
 });
 
@@ -382,7 +541,6 @@ router.post('/upload/chat', (req, res) => {
 router.get('/testnull', (req, res) => {
 	db.query('SELECT image FROM selection WHERE pid = 37', (err, rows) => {
 		for (var index in rows) {
-			console.log(rows[index].image == null);
 		}
 		res.sendStatus(200);
 	});

@@ -162,10 +162,13 @@ app.post('/postcomment', (req, res) => {
 app.get('/dynamiclink/:pid', async (req, res) => {
 	var title = '모두의 의견이 한 곳에! 폴링';
 	var desc =  '관심 있을 투표가 이곳에 있어요! 한번 살펴 보시겠어요?';
-	const {shortLink, previewLink} = await fdl.createLink({
+	
+	db.query('SELECT type FROM poll WHERE pid = ?', [req.params.pid.split('_')[1]], async (err, rows) => {
+		var type = rows[0].type;
+		const {shortLink, previewLink} = await fdl.createLink({
 		dynamicLinkInfo: {
 			domainUriPrefix: 'https://pollingcap.page.link',
-			link: 'https://devcap.duckdns.org/view/' + req.params.pid,
+			link: 'https://devcap.duckdns.org/view?pid=' + req.params.pid + '&type=' + type,
 			androidInfo: {
 				androidPackageName: 'com.polling',
 			},
@@ -178,8 +181,6 @@ app.get('/dynamiclink/:pid', async (req, res) => {
 			},
 		},
 	});
-	db.query('SELECT type FROM poll WHERE pid = ?', [req.params.pid.split('_')[1]], (err, rows) => {
-		var type = rows[0].type;
 		var url = shortLink;
 		res.json({link: url, socialTitle: title, socialDescription: desc});
 	});

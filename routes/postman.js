@@ -39,6 +39,33 @@ router.get('/view/:pid', (req, res) => {
 	});
 });
 
+router.get('/view/battle/:pid', (req, res) => {
+	var pid = req.params.pid.split('_')[1];
+	db.query(queries.getBattleById, [pid], (err, rows) => {
+		if (err) throw err;
+		var ret = {
+			postId: 'pid_' + rows[0].pid,
+			postType: rows[0].type,
+			posterId: rows[0].prefix + ' ' + rows[0].name,
+			posterUuid: rows[0].uid,
+			posterImage: rows[0].image,
+			timeBefore: rows[0].time,
+			userCount: rows[0].count,
+			storyText: rows[0].content,
+			selection: [],
+			likes: rows[0].likes,
+			comments: rows[0].comments,
+			timeLeft: rows[0].timeLeft > 0 ? rows[0].timeLeft : 0,
+			textA: {text: rows[0].selection, selectionId: 'sid_' + rows[0].sid},
+			textB: {text: rows[1].selection, selectionId: 'sid_' + rows[1].sid}
+		};
+		for (var index in rows) {
+			ret.selection.push({selectionId: 'sid_' + rows[index].sid, text: rows[index].selection, image: rows[index].simage});
+		}
+		res.json(ret);
+	});
+});
+
 router.get('/top/:type/:index', (req, res) => {
 	var index = parseInt(req.params.index);
 	var ret = {posts: [], size: 0};

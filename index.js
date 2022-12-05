@@ -19,17 +19,17 @@ const api = router.route('/');
 const FDL = require('firebase-dynamic-links');
 const fdl = new FDL.FirebaseDynamicLinks('AIzaSyD4OXIGO-t86tsvYqMqVX3C2axRiS6inrE');
 const fileUpload = require('express-fileupload');
-const hostUrl = 'http://devcap.duckdns.org:57043/';
+const hostUrl = 'ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';//'http://devcap.duckdns.org:57043/';
 const cron = require('node-cron');
 app.use(bodyParser.json({limit: '100mb'}));
 app.use(morgan('dev'));
 app.use('/images', express.static(__dirname + '/images'));
 app.use(fileUpload({
 	useTempFiles: true,
-	tempFileDir: '/home/seokhyeon/tmp'
+	tempFileDir: '/home/ubuntu/tmp'
 }));
 
-const serviceAccount = require('/home/seokhyeon/.firebase/serviceAccountKey.json');
+const serviceAccount = require('/home/ubuntu/.firebase/serviceAccountKey.json');
 
 const db = mysql.createConnection({
 	host: '127.0.0.1',

@@ -36,6 +36,11 @@ router.post('/rectag', async (req, res) => {
 		console.log(words1);
 		var words2 = sw.removeStopwords(words1, ['투표', '투표가', '투표는', '투표입니다.', '대한']).join(' ');
 		console.log(words2);
+		if (req.body.selection_text != undefined) {
+			for (var index in req.body.selection_text) {
+				words2 += req.body.selection_text[index];
+			}
+		}
 		for (var index in rows) {
 			taglist[rows[index].tid] = rows[index].name;
 		}
@@ -73,8 +78,11 @@ router.post('/rectag', async (req, res) => {
 		var simres = results.sort((a, b) => {
 			return b.sim - a.sim;
 		});
+		var max = simres[0].sim;
 		for (var i = 0; i < 3; i++) {
-			tags.push({tagId: 'tid_' + simres[i].tid, tag: simres[i].tag})
+			if (!((max - simres[i].sim) < 1) && simres[i].tag != '') {
+				tags.push({tagId: 'tid_' + simres[i].tid, tag: simres[i].tag});
+			}
 		}
 		res.setHeader('Content-Type', 'application/json');
 		res.json({tagList: tags});

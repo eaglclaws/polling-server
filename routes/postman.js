@@ -14,6 +14,7 @@ const bodyParser = require('body-parser');
 const usernames = require('../defs/names.json');
 const async = require('async');
 const fs = require('fs');
+const hostUrl = 'ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';
 
 router.get('/view/:pid', (req, res) => {
 	var pid = parseInt(req.params.pid.split('_')[1]);
@@ -414,7 +415,7 @@ router.post('/postpolling', async (req, res) => {
 								var ext = (row.image.split(';base64,')[0]).split('/').pop();
 								var b64 = row.image.split(';base64,').pop();
 								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
-								var url = 'http://devcap.duckdns.org:57043/images/selection/sid_' + row.sid + '.' + ext;
+								var url = hostUrl + 'images/selection/sid_' + row.sid + '.' + ext;
 								db.query('UPDATE selection SET image = ? WHERE pid = ? AND sid = ?', [url, pid, row.sid], (err, rows) => {
 									if (err) throw err;
 									callback(null);
@@ -458,7 +459,7 @@ router.post('/postbalance', (req, res) => {
 								var ext = row.image.split(';base64,')[0].split('/').pop();
 								var b64 = row.image.split(';base64,').pop();
 								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
-								var url = 'http://devcap.duckdns.org:57043/images/selection/sid_' + row.sid + '.' + ext;
+								var url = hostUrl + 'images/selection/sid_' + row.sid + '.' + ext;
 								db.query('UPDATE selection SET image = ? WHERE sid = ?', [url, row.sid], (err, rows) => {
 									if (err) throw err;
 									callback(null);
@@ -500,7 +501,7 @@ router.post('/postbattle', (req, res) => {
 								var ext = row.image.split(';base64,')[0].split('/').pop();
 								var b64 = row.image.split(';base64,').pop();
 								fs.writeFile('images/selection/sid_' + row.sid + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
-								var url = 'http://devcap.duckdns.org:57043/images/selection/sid_' + row.sid + '.' + ext;
+								var url = hostUrl + 'images/selection/sid_' + row.sid + '.' + ext;
 								db.query('UPDATE selection SET image = ? WHERE sid = ?', [url, row.sid], (err, rows) => {
 									if (err) throw err;
 									callback(null);
@@ -515,7 +516,7 @@ router.post('/postbattle', (req, res) => {
 							var b64 = req.body.profileImg.split(';base64,').pop();
 							var fcount = fs.readdirSync('images/profile').length
 							fs.writeFile('images/profile/profile' + fcount + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
-							var url = 'http://devcap.duckdns.org:57043/images/profile' + fcount + '.' + ext;
+							var url = hostUrl + 'images/profile' + fcount + '.' + ext;
 							db.query('INSERT INTO battle (pid, end, prefix, image) VALUES (?, TIMESTAMPADD(MINUTE, ?, CURRENT_TIMESTAMP()), ?, ?)', [pid, parseInt(req.body.endMinute), req.body.prefix, url], (err, rows) => {
 								if (err) throw err;				
 								res.sendStatus(200);

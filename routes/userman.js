@@ -13,9 +13,9 @@ const queries = require('../queries.js');
 const bodyParser = require('body-parser');
 const usernames = require('../defs/names.json');
 const admin = require('firebase-admin');
-const serviceAccount = require('/home/seokhyeon/.firebase/serviceAccountKey.json');
+const serviceAccount = require('/home/ubuntu/.firebase/serviceAccountKey.json');
 const fs = require('fs');
-const hostUrl = 'http://devcap.duckdns.org:57043/'
+const hostUrl = 'ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';//'http://devcap.duckdns.org:57043/'
 
 router.post('/signup', (req, res) => {
 	var uid = req.body.UUID;
@@ -136,6 +136,22 @@ router.post('/update/usertoken', (req, res) => {
 	var tok = req.body.token;
 	db.query('UPDATE user SET fcm = ? WHERE uid = ?', [tok, uid], (err, rows) => {
 		res.sendStatus(200);
+	});
+});
+
+router.post('/reward/giveprofile', (req, res) => {
+	var uid = req.body.UUID;
+	var profile_url = hostUrl + '/images/profile/profile' + req.body.profile_index + '.png';
+	db.query('INSERT INTO userprofile (uid, profile_url) VALUES (?, ?)', [uid, profile_url], (err, rows) => {
+		if (err) throw err;
+	});
+});
+
+router.post('/reward/giveprofile', (req, res) => {
+	var uid = req.body.UUID;
+	var prefix = req.body.prefix;
+	db.query('INSERT INTO userprefix (uid, prefix) VALUES (?, ?)', [uid, prefix], (err, rows) => {
+		if (err) throw err;
 	});
 });
 

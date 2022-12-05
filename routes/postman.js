@@ -103,6 +103,7 @@ router.get('/top/:type/:index', (req, res) => {
 			return;
 		});
 	} else {
+		//TODO: Update query to getRecommend, params as [type, uid, corelation, uid, type, index, type]
 	db.query(queries.getPosts, [req.params.type, index * 10, req.params.type], (err, rows) => {
 		if (err) throw err;
 		if (rows[0] == undefined) {

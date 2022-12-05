@@ -336,7 +336,147 @@ cron.schedule('* * * * *', () => {
 			}
 		}
 	});
+	console.log("update recommendation ratings");
+	rec_update();
+	console.log('update corelations');
+	corel_update();
 });
+
+var rec_update = async (req, res) => {
+	db.query('SELECT uid FROM user', async (err, rows) => {
+		var users = rows;
+		db.query('SELECT tid FROM tag', async (err, rows) => {
+			var tags = rows;
+			users.forEach(async (user) => {
+				tags.forEach(async (tag) => {
+					await db.query('INSERT IGNORE INTO recommendation_rating (uid, tid, rating) VALUES (?, ?, 0)', [user.uid, tag.tid]);
+				});
+				db.query('SELECT uid, tid, COUNT(tid) AS rating FROM polldone INNER JOIN polltag ON polldone.pid = polltag.pid WHERE uid = ? GROUP BY tid', [user.uid], async (err, rows) => {
+					if (rows) {
+						rows.forEach((row) => {
+							db.query('UPDATE recommendation_rating SET rating = ? WHERE tid = ? AND uid = ?', [row.rating, row.tid, row.uid]);
+						});
+					}
+				});
+			});
+		});
+	});
+}
+
+var corel_update = async (req, res) => {
+	var vecs = {};
+	var tag_count = 0;
+	var vec_avgs = {};
+	var vec_sigmas = {};
+	var users = [];
+	var ratings;
+	var getUser = new Promise((resolve, reject) => {
+		db.query('SELECT uid FROM user', (err, rows) => {
+			if (err) reject(err);
+			rows.forEach((row) => {
+				vecs[row.uid] = {};
+				users.push(row.uid);
+			});
+			return resolve(rows)
+		});
+	});
+	var getVector = new Promise((resolve, reject) => {
+		 db.query('SELECT uid, tid, rating FROM recommendation_rating', (err, rows) => {
+			if (err) reject(err);
+			if (rows) {
+				var count = 0;
+				rows.forEach((row) => {
+					vecs[row.uid][row.tid] = row.rating;
+				});
+			}
+			return resolve(vecs);
+		 });
+	});
+	await getUser;
+	await getVector;
+	for (var i in vecs[users[0]]) {
+		tag_count++;
+	}
+	users.forEach((user) => {
+		vec_avgs[user] = 0;
+		vec_sigmas[user] = 0;
+		for (var i in vecs[user]) {
+			vec_avgs[user] += vecs[user][i];
+		}
+		vec_avgs[user] /= tag_count;
+		for (var i in vecs[user]) {
+			vec_sigmas[user] += (vecs[user][i] - vec_avgs[user]) * (vecs[user][i] - vec_avgs[user]);
+		}
+		vec_sigmas[user] = Math.sqrt(vec_sigmas[user] / tag_count);
+	});
+	users.forEach((userA) => {
+		users.forEach((userB) => {
+			if (!(userA == userB)) {
+				var Cab = covar(vecs[userA], vec_avgs[userA], vecs[userB], vec_avgs[userB]) / (vec_sigmas[userA] * vec_sigmas[userB]);
+				Cab = isNaN(parseFloat(Cab)) ? 0 : Cab;
+				db.query('INSERT INTO rec_corelation (src_uid, des_uid, corelation) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE corelation = ?', [userA, userB, Cab, Cab]);
+			}
+		});
+	});
+	/*
+	await db.query('SELECT uid FROM user', async (err, rows) => {
+		await rows.forEach(async (user) => {
+			users.push(user.uid);
+			user_vec_avg[user.uid] = 0;
+			user_vecs[user.uid] = {};
+			await db.query('SELECT tid, rating WHERE uid = ?', [user.uid], async (err, rows) => {
+				if (rows) {
+					await rows.forEach((row) => {
+						user_vecs[user.uid][row.tid] = row.rating;
+					});
+					var count = 0;
+					for (var x in user_vecs[user.uid]) {
+						user_vec_avg[user.uid] += user_vecs[user.uid][x];
+						count++;
+					}
+					user_vec_avg[user.uid] /= count;
+					for (var x in user_vecs[user.uid]) {
+						user_vec_sigma[user.uid] += (user_vecs[user.uid][x] - user_vec_avg[user.uid]) * (user_vecs[user.uid][x] - user_vec_avg[user.uid]);
+					}
+					user_vec_sigma[user.uid] = Math.sqrt(user_vec_sigma[user.uid] / count);
+				}
+			});
+		});
+	});
+	await users.forEach(async (userA) => {
+		await users.forEach((userB) => {
+			if (!(userA == userB)) {
+				var Cab = covar(user_vecs[userA], user_vec_avg[userA], user_vecs[userB], user_vec_avg[userB]) / (user_vec_sigma[userA] * user_vec_sigma[userB]);
+				console.log(Cab);
+				db.query('INSERT INTO rec_corelation (src_uid, des_uid, corelation) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE corelation = ?', [userA, userB, Cab, Cab]);
+			}
+		});
+	});
+	*/
+}
+
+function sigma(vector, avg) {
+	var ret = 0;
+	var count = 0;
+	for (var i in vector) {
+		ret += (vector[i] - avg) * (vector[i] - avg);
+		count++;
+	}
+	ret /= count;
+	ret = Math.sqrt(ret);
+	return ret;
+}
+
+function covar(vectorA, avgA, vectorB, avgB) {
+	var ret = 0;
+	var count = 0;
+	for (var i in vectorA) {
+		ret += (vectorA[i] - avgA) * (vectorB[i] - avgB);
+		count++;
+	}
+	ret /= count;
+	return ret;
+}
 
 app.listen(port, () => {
 	console.log(`Polling server listening on port ${port}`);

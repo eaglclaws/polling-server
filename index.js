@@ -201,6 +201,15 @@ app.get('/dynamiclink/:pid', async (req, res) => {
 						},
 						ticks: { min: 0 }
 					},
+					plugins: {
+						legend: {
+							labels: {
+								font: {
+									family: "NanumGothic"
+								}
+							}
+						} 
+					}
 				},
 				data: {
 					labels: [],

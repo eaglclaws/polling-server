@@ -21,6 +21,14 @@ const fdl = new FDL.FirebaseDynamicLinks('AIzaSyD4OXIGO-t86tsvYqMqVX3C2axRiS6inr
 const fileUpload = require('express-fileupload');
 const hostUrl = 'ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';//'http://devcap.duckdns.org:57043/';
 const cron = require('node-cron');
+const { CanvasRenderService } = require('chartjs-node-canvas');
+const fs = require('fs');
+const width = 1000;   // define width and height of canvas
+const height = 1000;
+const chartCallback = (ChartJS) => {
+ console.log('chart built')
+};
+const canvasRenderService = new CanvasRenderService(width, height, chartCallback);
 app.use(bodyParser.json({limit: '100mb'}));
 app.use(morgan('dev'));
 app.use('/images', express.static(__dirname + '/images'));
@@ -163,26 +171,76 @@ app.get('/dynamiclink/:pid', async (req, res) => {
 	var title = '모두의 의견이 한 곳에! 폴링';
 	var desc =  '관심 있을 투표가 이곳에 있어요! 한번 살펴 보시겠어요?';
 	
-	db.query('SELECT type FROM poll WHERE pid = ?', [req.params.pid.split('_')[1]], async (err, rows) => {
+	db.query('SELECT type, content FROM poll WHERE pid = ?', [req.params.pid.split('_')[1]], async (err, rows) => {
+		var pollId = req.params.pid.split('_')[1];
 		var type = rows[0].type;
-		const {shortLink, previewLink} = await fdl.createLink({
-		dynamicLinkInfo: {
-			domainUriPrefix: 'https://pollingcap.page.link',
-			link: 'https://devcap.duckdns.org/view?pid=' + req.params.pid + '&type=' + type,
-			androidInfo: {
-				androidPackageName: 'com.polling',
-			},
-			iosInfo: {
-				iosBundleId: 'com.polling',
-			},
-			socialMetaTagInfo: {
-				socialTitle: title,
-				socialDescription: desc,
-			},
-		},
-	});
-		var url = shortLink;
-		res.json({link: url, socialTitle: title, socialDescription: desc});
+		var content = rows[0].content;
+		db.query(queries.getResult, [pollId, pollId], async (err, rows) => {
+			if(err) throw err;
+			for (var index in rows) {
+				rows[index].selectionId = 'sid_' + rows[index].selectionId;
+				if (rows[index].percent == null) {
+					rows[index].percent = 0.0;
+				}
+			}
+			var config = {
+				type: 'horizontalBar',
+				options: {
+					legend: { display: false },
+					title: { display: false },
+					scales: {
+						xAxes: [{
+							ticks: {
+								min: 0,
+								beginAtZero: true
+							}
+						}],
+						x: {
+							beginAtZero: true,
+							min: 0
+						},
+						ticks: { min: 0 }
+					},
+				},
+				data: {
+					labels: [],
+					datasets: [{
+						label: content,
+						data: [],
+						fill: false,
+						backgroundColor: ['red', 'green', 'blue', 'magenta', 'yellow', 'cyan'],
+					}]
+				}
+			};
+			for (var i in rows) {
+				config.data.labels.push(rows[i].content);
+				config.data.datasets[0].data.push(rows[i].percent);
+			}
+			const dataUrl = await canvasRenderService.renderToDataURL(config);
+			var text = dataUrl.toString();
+			text = text.split(';base64,').pop();
+			fs.writeFile('images/dynamic/pid_' + pollId + '.png', text, {encoding: 'base64'}, () => {});
+			var imageUrl = hostUrl + 'images/dynamic/pid_' + pollId + '.png';
+			const {shortLink, previewLink} = await fdl.createLink({
+				dynamicLinkInfo: {
+					domainUriPrefix: 'https://pollingcap.page.link',
+					link: 'https://devcap.duckdns.org/view?pid=' + req.params.pid + '&type=' + type + '&imgUrl=' + imageUrl,
+					androidInfo: {
+						androidPackageName: 'com.polling',
+					},
+					iosInfo: {
+						iosBundleId: 'com.polling',
+					},
+					socialMetaTagInfo: {
+						socialTitle: title,
+						socialDescription: desc,
+					},
+				},
+			});
+			var url = shortLink;
+			res.json({link: url, socialTitle: title, socialDescription: desc});
+
+		});
 	});
 });
 

@@ -9,7 +9,7 @@ const db = mysql.createConnection({
 	port: '54855',
 	user: 'develop',
 	password: 'cien14789*',
-	database: 'pollingtesting'
+	database: 'polling'
 });
 const queries = require('../queries.js');
 const bodyParser = require('body-parser');
@@ -30,17 +30,15 @@ router.post('/rectag', async (req, res) => {
 		if (err) throw err;
 		var tags = [];
 		var taglist = [];
-		var words = sw.removeStopwords(req.body.poll_name.split(' '), stopwords);
-		console.log(words);
+		var words = sw.removeStopwords(req.body.poll_name.replace(/[&\/\\#,+()$~%.'":*?<>{}!]/g, '').split(' '), stopwords);
 		var words1 = sw.removeStopwords(words, 'ko');
-		console.log(words1);
 		var words2 = sw.removeStopwords(words1, ['투표', '투표가', '투표는', '투표입니다.', '대한']).join(' ');
-		console.log(words2);
 		if (req.body.selection_text != undefined) {
 			for (var index in req.body.selection_text) {
 				words2 += req.body.selection_text[index];
 			}
 		}
+		console.log(words2);
 		for (var index in rows) {
 			taglist[rows[index].tid] = rows[index].name;
 		}
@@ -78,10 +76,19 @@ router.post('/rectag', async (req, res) => {
 		var simres = results.sort((a, b) => {
 			return b.sim - a.sim;
 		});
+		console.log(simres);
 		var max = simres[0].sim;
-		for (var i = 0; i < 3; i++) {
-			if (!((max - simres[i].sim) < 1) && simres[i].tag != '') {
+		for (var i = 0; i < simres.length; i++) {
+			if (((max - simres[i].sim) < 0.15) && simres[i].tag != '') {
 				tags.push({tagId: 'tid_' + simres[i].tid, tag: simres[i].tag});
+			}
+			if (tags.length == 3) {
+				break;
+			}
+		}
+		if (tags.length == 0) {
+			for (var i = 0; i < 3; i++) {
+				tags.push({tagId: 'tid_' + rows[i].tid, tag: rows[i].name});
 			}
 		}
 		res.setHeader('Content-Type', 'application/json');
@@ -90,20 +97,21 @@ router.post('/rectag', async (req, res) => {
 });
 
 router.post('/searchtag', (req, res) => {
-	console.log('searchtag');
-	console.log(req.body);
 	var sql;
 	if (req.body.tag == "") {
 		sql = queries.topTags;
 	} else {
 		sql = queries.searchTag;
 	}
-	db.query(sql, [`%${req.body.tag}%`], (err, rows) => {
-		if (err) throw err;
+	db.query(sql, [`%${req.body.tag.trim()}%`], (err, rows) => {
+		if (err) {
+			console.error(err);
+		}
 		var tags = [];
 		for (var index in rows) {
 			tags.push({tagId: 'tid_' + rows[index].tid, tag: rows[index].name});
 		}
+		console.log('searchtag, ' + tags);
 		res.json({tagList: tags});
 	});
 });

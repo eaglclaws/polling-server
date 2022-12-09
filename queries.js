@@ -87,7 +87,10 @@ const getRecommend =
                 'SELECT poll.*, COALESCE(polldone.count, 0) AS count ' +
                 'FROM ( ' +
                     'SELECT poll.pid, poll.type, poll.content, TIMESTAMPDIFF(MINUTE, poll.time, CURRENT_TIMESTAMP()) AS time, user.uid, user.image, user.prefix, user.name ' +
-                    'FROM ( ' +
+					'FROM ( ' +
+						'( ' +
+						'SELECT * FROM poll WHERE type = ? AND (uid = ? OR TIMESTAMPDIFF(MINUTE, time, CURRENT_TIMESTAMP()) < 6) ORDER BY time DESC ' +
+						') UNION ' +
 						'( ' +
 							'SELECT * FROM poll ' +
 							'WHERE type = ? ' +
@@ -103,11 +106,11 @@ const getRecommend =
 									'FROM polldone ' +
 									'WHERE uid = ? ' +
 								') GROUP BY pid ' +
-		                    ') ORDER BY time ' +
+		                    ') ORDER BY time DESC' +
 		                ') UNION ( ' +
 			                'SELECT * FROM poll ' +
 		                    'WHERE type = ? ' +
-		                    'ORDER BY time ' +
+		                    'ORDER BY time DESC' +
 		                ') ' +
                     ') AS poll ' +
                     'INNER JOIN user ON poll.uid = user.uid ' +
@@ -246,7 +249,7 @@ const battlePosts =
 '            FROM ( ' +
 '                SELECT pid, uid ' +
 '                FROM poll ' +
-'                WHERE type = \'battle\' ORDER BY time DESC LIMIT 10 OFFSET ? ' +
+'                WHERE type = \'battle\' ' +
 '            ) AS poll ' +
 '            INNER JOIN user ON poll.uid = user.uid ' +
 '        ) AS poll ' +
@@ -256,7 +259,7 @@ const battlePosts =
 '            GROUP BY pid ' +
 '        ) AS polldone ON poll.pid = polldone.pid ' +
 '    ) AS poll ' +
-'    INNER JOIN battle ON poll.pid = battle.pid ' +
+'    INNER JOIN battle ON poll.pid = battle.pid ORDER BY time DESC LIMIT 10 OFFSET ? ' +
 ') AS poll ' +
 'INNER JOIN ( ' +
 '    SELECT pid, sid, content AS selection, image AS simage ' +
@@ -377,10 +380,10 @@ const detailAge =
 'LEFT JOIN ( ' +
 '    SELECT aux.sid, aux.age, COUNT(*) * 100 / SUM(COUNT(*)) OVER () AS percent ' +
 '    FROM ( ' +
-'        SELECT polldone.sid, user.age ' +
+'        SELECT polldone.sid, TIMESTAMPDIFF(YEAR, user.birthday, CURRENT_TIMESTAMP()) AS age ' +
 '        FROM polldone ' +
 '        INNER JOIN user ON polldone.uid = user.uid ' +
-'        WHERE pid = ? and age BETWEEN ? and ?' +
+'        WHERE pid = ? and TIMESTAMPDIFF(YEAR, user.birthday, CURRENT_TIMESTAMP()) BETWEEN ? and ?' +
 '    ) AS aux ' +
 '    GROUP BY sid, age ' +
 '    ORDER BY sid, age ' +
@@ -422,10 +425,12 @@ const userLookup =
 const getBattle =
 'select poll.*, selection.sid, selection.content, selection.image AS simage ' +
 'from ( ' +
+'(SELECT poll.pid, type, TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) as timeLeft ' +
+'from poll inner join battle on battle.pid = poll.pid where TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) > 0 ORDER BY time) UNION ( ' +
 'select poll.pid, type, TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) as timeleft ' +
 'from poll ' +
-'inner join battle on battle.pid = poll.pid ' +
-') as poll ' +
+'inner join battle on battle.pid = poll.pid ORDER BY end DESC' +
+')) as poll ' +
 'inner join selection on poll.pid = selection.pid; ';
 
 const getComments =
@@ -435,17 +440,17 @@ const getComments =
 'where pid = ?) as comment ' +
 'left join ( ' +
 	'select uid, sid from polldone where pid = ? ' +
-') as polldone on comment.uid = polldone.uid; ';
+') as polldone on comment.uid = polldone.uid ORDER BY time;';
 
 const battleResult =
 'SELECT sid, COUNT(*) * 100 / SUM(COUNT(*)) OVER () AS percent ' +
 'FROM polldone WHERE pid = ? ' +
-'GROUP BY sid; ';
+'GROUP BY sid ORDER BY sid; ';
 
 const battleCountTime = 'SELECT * FROM (SELECT COUNT(*) AS userCount FROM polldone WHERE pid = ?) AS tot, (SELECT TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) AS time FROM battle WHERE pid = ?) AS time;';
 
 const battleChats =
-'SELECT poll.*, TIMESTAMPDIFF(MINUTE, battlechat.time, CURRENT_TIMESTAMP()) AS time, battlechat.content ' +
+'SELECT poll.*, TIMESTAMPDIFF(MINUTE, battlechat.time, CURRENT_TIMESTAMP()) AS time, battlechat.content, battlechat.sid AS side ' +
 'FROM ( ' +
 '	SELECT poll.*, user.image, user.prefix, user.name ' +
 '	FROM ( ' +

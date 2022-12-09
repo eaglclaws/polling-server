@@ -19,12 +19,12 @@ const api = router.route('/');
 const FDL = require('firebase-dynamic-links');
 const fdl = new FDL.FirebaseDynamicLinks('AIzaSyD4OXIGO-t86tsvYqMqVX3C2axRiS6inrE');
 const fileUpload = require('express-fileupload');
-const hostUrl = 'ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';//'http://devcap.duckdns.org:57043/';
+const hostUrl = 'http://ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';//'http://devcap.duckdns.org:57043/';
 const cron = require('node-cron');
 const { CanvasRenderService } = require('chartjs-node-canvas');
 const fs = require('fs');
-const width = 1000;   // define width and height of canvas
-const height = 1000;
+const width = 800;   // define width and height of canvas
+const height = 400;
 const chartCallback = (ChartJS) => {
  console.log('chart built')
 };
@@ -44,7 +44,7 @@ const db = mysql.createConnection({
 	port: '54855',
 	user: 'develop',
 	password: 'cien14789*',
-	database: 'pollingtesting'
+	database: 'polling'
 });
 
 admin.initializeApp({
@@ -80,7 +80,10 @@ app.get('/db', (req, res) => {
 
 app.get('/giveadmin/:uid', (req, res) => {
 	db.query('UPDATE user SET admin = TRUE WHERE uid = ?', [req.params.uid], (err, rows) => {
-		if (err) throw err;
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		res.sendStatus(200);
 	});
 });
@@ -149,6 +152,10 @@ app.get('/empty', (req, res) => {
 app.get('/comments/:pid', (req, res) => {
 	var pid = parseInt(req.params.pid.split('_')[1]);
 	db.query(queries.getComments, [pid, pid], (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		var ret = {comments: []};
 		for (var index in rows) {
 			var {uid, image, prefix, name, content, sid, time, link} = rows[index];
@@ -162,7 +169,11 @@ app.post('/postcomment', (req, res) => {
 	var uid = req.body.UUID;
 	var pid = parseInt(req.body.pid.split('_')[1]);
 	var content = req.body.content;
-	db.query('INSERT INTO comment (uid, pid, content) VALUES (?, ?, ?)', [uid, pid, content], () => {
+	db.query('INSERT INTO comment (uid, pid, content) VALUES (?, ?, ?)', [uid, pid, content], (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		res.sendStatus(200);
 	});
 });
@@ -172,6 +183,10 @@ app.get('/dynamiclink/:pid', async (req, res) => {
 	var desc =  '관심 있을 투표가 이곳에 있어요! 한번 살펴 보시겠어요?';
 	
 	db.query('SELECT type, content FROM poll WHERE pid = ?', [req.params.pid.split('_')[1]], async (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		var pollId = req.params.pid.split('_')[1];
 		var type = rows[0].type;
 		var content = rows[0].content;
@@ -242,12 +257,13 @@ app.get('/dynamiclink/:pid', async (req, res) => {
 					},
 					socialMetaTagInfo: {
 						socialTitle: title,
-						socialDescription: desc,
+						socialDescription: content,
+						socialImageLink: imageUrl
 					},
 				},
 			});
 			var url = shortLink;
-			res.json({link: url, socialTitle: title, socialDescription: desc});
+			res.json({link: url, socialTitle: title, socialDescription: content, socialImageLink: imageUrl});
 
 		});
 	});
@@ -282,6 +298,10 @@ app.get('/updatesel', (req, res) => {
 app.get('/admin/uids', (req, res) => {
 	var ret = {uids: []};
 	db.query('SELECT uid FROM user ORDER BY uid', (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		for (var index in rows) {
 			ret.uids.push(rows[index].uid);
 		}
@@ -292,6 +312,10 @@ app.get('/admin/uids', (req, res) => {
 app.get('/pushtest', (req, res) => {
 	var tokens = [];
 	db.query('SELECT fcm AS token FROM user WHERE NOT fcm = \'NULL\'', (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		for (var index in rows) {
 			tokens.push(rows[index].token);
 		}
@@ -341,9 +365,12 @@ app.post('/login', (req, res) => {
 		.then((decodedToken) => {
 			const uid = decodedToken.uid;
 			db.query('SELECT * FROM user WHERE uid = ?', [uid], (err, rows) => {
-				if (err) throw err;
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 				console.log('login successful');
-				res.json({UUID: uid, isNew: rows.length == 0, isAdmin: rows[0].admin == 1});
+				res.json({UUID: uid, isNew: rows.length == 0, isAdmin: !rows[0] ? false : rows[0].admin == 1});
 			});
 		})
 		.catch((error) => {
@@ -353,17 +380,51 @@ app.post('/login', (req, res) => {
 
 
 cron.schedule('* * * * *', () => {
+	if (process.env.NODE_APP_INSTANCE === '0') {
 	console.log('Checking finished battles');
-	var tokens = [];
-	db.query('SELECT TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) AS time, pid FROM battle', (err, rows) => {
+	db.query('SELECT TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP(), end) AS time, pid, prefix, image FROM battle', (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		for (var index in rows) {
 			if (rows[index].time == 0) {
+				var tokens = [];
 				var pid = rows[index].pid;
-				db.query('SELECT fcm as token FROM polldone INNER JOIN user on polldone.uid = user.uid where pid = ? and not fcm = \'NULL\'', [rows[index].pid], (err, rows) => {
+				var prefix = rows[index].prefix;
+				var image = rows[index].image;
+				db.query('SELECT fcm as token, user.uid, sid FROM polldone INNER JOIN user on polldone.uid = user.uid where pid = ? and not fcm = \'NULL\'', [rows[index].pid], (err, rows) => {
+					if (err) {
+						console.error(err);
+						res.sendStatus(500);
+					}
+					var users = rows;
+					db.query(queries.battleResult, [pid], (err, rows) => {
+						var percent = !rows[0] ? 0 : rows[0].percent;
+						var sid = !rows[0] ? '' : rows[0].sid;
+						users.forEach((user) => {
+							if ((percent >= 50 && user.sid == sid) || (percent < 50 && user.sid != sid)) {
+								db.query('INSERT INTO userprofile (uid, profile_url) VALUES (?, ?)', [user.uid, image], (err, rows) => {
+								if (err) {
+									console.error(err);
+									res.sendStatus(500);
+									}
+								});
+							}
+							db.query('INSERT INTO userprefix (uid, prefix) VALUES (?, ?)', [user.uid, prefix], (err, rows) => {
+								if (err) {
+									console.error(err);
+									res.sendStatus(500);
+								}
+							});
+						});
+					});
 					db.query('DELETE FROM battlechat WHERE pid = ?', [pid]);
+					db.query('UPDATE battle SET end = TIMESTAMPADD(MINUTE, -2, end) WHERE pid = ?', [pid]);
 					for (var index in rows) {
 						tokens.push(rows[index].token);
 					}
+					console.log(tokens);
 					const message = {
 						tokens: tokens,
 						notification: {
@@ -377,12 +438,10 @@ cron.schedule('* * * * *', () => {
 								},
 							},
 							fcm_options: {
-								image: hostUrl + 'images/pushtest/image.jpeg',
 							},
 						},
 						android: {
 							notification: {
-								image: hostUrl + 'images/pushtest/image.jpeg',
 							},
 						},
 						data: {
@@ -390,15 +449,17 @@ cron.schedule('* * * * *', () => {
 							postType: 'battle',
 						}
 					};
-					admin
-						.messaging()
-						.sendMulticast(message)
-						.then(response => {
-							console.log('Successfully sent message:', response);
-						})
-						.catch(error => {
-							console.log('Error sending message:', error);
-						});
+					if (tokens.length != 0) {
+						admin
+							.messaging()
+							.sendMulticast(message)
+							.then(response => {
+								console.log('Successfully sent message:', response);
+							})
+							.catch(error => {
+								console.log('Error sending message:', error);
+							});
+					}
 				});
 			}
 		}
@@ -406,7 +467,7 @@ cron.schedule('* * * * *', () => {
 	console.log("update recommendation ratings");
 	rec_update();
 	console.log('update corelations');
-	corel_update();
+	corel_update();}
 });
 
 var rec_update = async (req, res) => {

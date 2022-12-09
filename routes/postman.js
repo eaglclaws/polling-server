@@ -7,19 +7,22 @@ const db = mysql.createConnection({
 	port: '54855',
 	user: 'develop',
 	password: 'cien14789*',
-	database: 'pollingtesting'
+	database: 'polling'
 });
 const queries = require('../queries.js');
 const bodyParser = require('body-parser');
 const usernames = require('../defs/names.json');
 const async = require('async');
 const fs = require('fs');
-const hostUrl = 'ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';
+const hostUrl = 'http://ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';
 
 router.get('/view/:pid', (req, res) => {
 	var pid = parseInt(req.params.pid.split('_')[1]);
 	db.query(queries.getPostById, [pid], (err, rows) => {
-		if (err) throw err;
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		var ret = {
 			postId: 'pid_' + rows[0].pid,
 			postType: rows[0].type,
@@ -43,7 +46,10 @@ router.get('/view/:pid', (req, res) => {
 router.get('/view/battle/:pid', (req, res) => {
 	var pid = req.params.pid.split('_')[1];
 	db.query(queries.getBattleById, [pid], (err, rows) => {
-		if (err) throw err;
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		var ret = {
 			postId: 'pid_' + rows[0].pid,
 			postType: rows[0].type,
@@ -67,11 +73,16 @@ router.get('/view/battle/:pid', (req, res) => {
 	});
 });
 
-router.get('/top/:type/:index', (req, res) => {
+router.get('/top/:uid/:type/:index', (req, res) => {
 	var index = parseInt(req.params.index);
 	var ret = {posts: [], size: 0};
+	var uid = req.params.uid;
 	if (req.params.type == 'battle') {
 		db.query(queries.battlePosts, [parseInt(req.params.index) * 10], (err, rows) => {
+			if (err) {
+				console.error(err);
+				res.sendStatus(500);
+			}
 			if (rows[0] == undefined) {
 				res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
 				res.status(400).send(res.statusMessage);
@@ -97,6 +108,10 @@ router.get('/top/:type/:index', (req, res) => {
 				});
 			}
 			db.query('SELECT COUNT(*) AS size FROM poll WHERE type = \'battle\'', (err, rows) => {
+				if (err) {
+					console.error(err);
+					res.sendStatus(500);
+				}
 				ret.size = rows[0].size;
 				res.json(ret);
 			});
@@ -104,8 +119,11 @@ router.get('/top/:type/:index', (req, res) => {
 		});
 	} else {
 		//TODO: Update query to getRecommend, params as [type, uid, corelation, uid, type, index, type]
-	db.query(queries.getPosts, [req.params.type, index * 10, req.params.type], (err, rows) => {
-		if (err) throw err;
+	db.query(queries.getRecommend, [req.params.type, uid, req.params.type, uid, 0.8, uid, req.params.type, index * 10, req.params.type], (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		if (rows[0] == undefined) {
 			res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
 			res.status(400).send(res.statusMessage);
@@ -134,6 +152,10 @@ router.get('/top/:type/:index', (req, res) => {
 
 router.get('/getselection/:uid/:pid', (req, res) => {
 	db.query('SELECT sid FROM polldone WHERE uid = ? AND pid = ?', [req.params.uid, req.params.pid.split('_')[1]], (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		res.json({selection: rows[0] == undefined ? null : 'sid_' + rows[0].sid});
 	});
 });
@@ -141,7 +163,10 @@ router.get('/getselection/:uid/:pid', (req, res) => {
 router.post('/search', (req, res) => {
 	var ret = {posts: [], size: 0};
 	db.query(queries.searchPosts, [`%${req.body.searchWord}%`, req.body.page_index * 10, `%${req.body.searchWord}%`], (err, rows) => {
-		if (err) throw err;
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		}
 		if (rows[0] == undefined) {
 			res.statusMessage = "[POLLING SEVER ERROR] Page request out of bounds";
 			res.status(400).send(res.statusMessage);
@@ -231,13 +256,15 @@ router.get('/battleresult/:pid', (req, res) => {
 		var pid = req.params.pid.split('_')[1];
 		var row = rows;
 		db.query(queries.battleCountTime, [pid, pid], (err, rows) => {
-			if (row == undefined) {
-				res.json({percentA: 0});
-				return;
-			} else {
-				var percent = row[0].percent;
-				res.json({percentA: percent, userCount: rows[0].userCount, timeLeft: rows[0].time});
-			}
+			db.query('SELECT sid FROM selection WHERE pid = ? ORDER BY sid', [pid], (err, sids) => {
+				var base = sids[0].sid;
+				if (!row[0]) {
+					res.json({percentA: 0, userCount: 0, timeLeft: rows[0].time});
+				} else {
+					var percent = base == row[0].sid ? row[0].percent : 100 - row[0].percent;
+					res.json({percentA: percent, userCount: rows[0].userCount, timeLeft: rows[0].time});
+				}
+			});
 		});
 	});
 });
@@ -384,11 +411,16 @@ router.get('/detail/mbti/:poll_id/:selectE/:selectS/:selectT/:selectJ', (req, re
 router.post('/vote', (req, res) => {
 	var {UUID, poll_id, sid} = req.body;
 	poll_id = parseInt(poll_id.split('_')[1]);
-	sid = parseInt(sid.split('_')[1]);
-	db.query('INSERT INTO polldone (uid, pid, sid) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE sid = ?', [UUID, poll_id, sid, sid], (err, rows) => {
-		if (err) throw err;
+	if (!sid || sid == 'null' || sid == 'NULL') {
+		db.query('DELETE FROM polldone WHERE uid = ? AND pid = ?', [UUID, poll_id], (err, rows) => {});
 		res.sendStatus(200);
-	});
+	} else {
+		sid = parseInt(sid.split('_')[1]);
+		db.query('INSERT INTO polldone (uid, pid, sid) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE sid = ?', [UUID, poll_id, sid, sid], (err, rows) => {
+			if (err) throw err;
+			res.sendStatus(200);
+		});
+	}
 });
 
 router.post('/postpolling', async (req, res) => {
@@ -517,7 +549,7 @@ router.post('/postbattle', (req, res) => {
 							var b64 = req.body.profileImg.split(';base64,').pop();
 							var fcount = fs.readdirSync('images/profile').length
 							fs.writeFile('images/profile/profile' + fcount + '.' + ext, b64, {encoding: 'base64'}, (err) => {});
-							var url = hostUrl + 'images/profile' + fcount + '.' + ext;
+							var url = hostUrl + 'images/profile/profile' + fcount + '.' + ext;
 							db.query('INSERT INTO battle (pid, end, prefix, image) VALUES (?, TIMESTAMPADD(MINUTE, ?, CURRENT_TIMESTAMP()), ?, ?)', [pid, parseInt(req.body.endMinute), req.body.prefix, url], (err, rows) => {
 								if (err) throw err;				
 								res.sendStatus(200);
@@ -531,6 +563,7 @@ router.post('/postbattle', (req, res) => {
 
 router.get('/battlechat/:pid', (req, res) => {
 	db.query(queries.battleChats, [req.params.pid.split('_')[1]], (err, rows) => {
+		if (err) throw err;
 		var ret = {chats: []};
 		var one = null;
 		var two = null;
@@ -539,18 +572,24 @@ router.get('/battlechat/:pid', (req, res) => {
 			var name = rows[index].prefix + ' ' + rows[index].name;
 			var select = rows[index].sid;
 			var time = rows[index].time;
+			var side = rows[index].side;
 			ret.chats.push({
 				profileImage: pfp,
 				posterId: name,
-				selectNum: select,
+				selectNum: side,
 				content: rows[index].content,
 				time: time
 			});
 		}
 		db.query('SELECT sid FROM selection WHERE pid = ? ORDER BY sid', [req.params.pid.split('_')[1]], (err, rows) => {
+			if (err) throw err;
 			one = rows[0].sid;
 			two = rows[1].sid;
 			for (var index in ret.chats) {
+				if (side == 'NULL') {
+					ret.chats[index].selectNum = null;
+					continue;
+				}
 				ret.chats[index].selectNum = ret.chats[index].selectNum == one ? 1 : 2;
 			}
 			res.json(ret);
@@ -562,8 +601,12 @@ router.post('/upload/chat', (req, res) => {
 	var uid = req.body.UUID;
 	var pid = req.body.postId.split('_')[1];
 	var content = req.body.content;
-	db.query('INSERT INTO battlechat (uid, pid, content) VALUES (?, ?, ?)', [uid, pid, content], (err, rows) => {
-		res.sendStatus(200);
+	db.query('SELECT sid FROM polldone WHERE uid = ? AND pid = ?', [uid, pid], (err, rows) => {
+		var sid = !rows[0] ? 'NULL' : rows[0].sid;
+		db.query('INSERT INTO battlechat (uid, pid, content, sid) VALUES (?, ?, ?, ?)', [uid, pid, content, sid], (err, rows) => {
+			if (err) throw err;
+			res.sendStatus(200);
+		});
 	});
 });
 
@@ -575,4 +618,76 @@ router.get('/testnull', (req, res) => {
 	});
 });
 
+router.delete('/delete/:pid', (req, res) => {
+	var pid = req.params.pid.split('_')[1];
+	db.query('DELETE FROM commentlikes WHERE cid IN (SELECT cid FROM comment WHERE pid = ?)', [pid], (err, rows) => {
+		if (err) {
+			console.error(err);
+			res.sendStatus(500);
+		} else {
+			db.query('DELETE FROM comment WHERE pid = ? OR link = ?', [pid, pid], (err, rows) => {
+				if (err) {
+					console.error(err);
+					res.sendStatus(500);
+				} else {
+					db.query('DELETE FROM polldone WHERE pid = ?', [pid], (err, rows) => {
+						if (err) {
+							console.error(err);
+							res.sendStatus(500);
+						} else {
+							db.query('DELETE FROM polllikes WHERE pid = ?', [pid], (err, rows) => {
+								if (err) {
+									console.error(err);
+									res.sendStatus(500);
+								} else {
+									db.query('DELETE FROM polltag WHERE pid = ?', [pid], (err, rows) => {
+										if (err) {
+											console.error(err);
+											res.sendStatus(500);
+										} else {
+											db.query('DELETE FROM battle WHERE pid = ?', [pid], (err, rows) => {
+												if (err) {
+													console.error(err);
+													res.sendStatus(500);
+												} else {
+													db.query('DELETE FROM selection WHERE pid = ?', [pid], (err, rows) => {
+														if (err) {
+															console.error(err);
+															res.sendStatus(500);
+														} else {
+															db.query('DELETE FROM poll WHERE pid = ?', [pid], (err, rows) => {
+																if (err) {
+																	console.error(err);
+																	res.sendStatus(500);
+																} else {
+																	res.sendStatus(200);
+																}
+															});
+														}
+													});
+												}
+											});
+										}
+									});
+								}
+							});
+						}
+					});
+				}
+			});
+		}
+	});
+});
+router.delete('/delete/:cid', (req, res) => {
+	var cid = req.params.cid;
+	db.query('DELETE FROM commentlikes WHERE cid = ?', [cid], (err, rows) => {
+		if (err) {res.sendStatus(500);}
+		else {
+			db.query('DELETE FROM comment WHERE cid = ?', [cid], (err, rows) => {
+				if (err) {res.sendStatus(500);}
+				else {res.sendStatus(200);}
+			});
+		}
+	});
+});
 module.exports = router;

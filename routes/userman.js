@@ -7,7 +7,7 @@ const db = mysql.createConnection({
 	port: '54855',
 	user: 'develop',
 	password: 'cien14789*',
-	database: 'pollingtesting'
+	database: 'polling'
 });
 const queries = require('../queries.js');
 const bodyParser = require('body-parser');
@@ -15,7 +15,7 @@ const usernames = require('../defs/names.json');
 const admin = require('firebase-admin');
 const serviceAccount = require('/home/ubuntu/.firebase/serviceAccountKey.json');
 const fs = require('fs');
-const hostUrl = 'ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';//'http://devcap.duckdns.org:57043/'
+const hostUrl = 'http://ec2-3-39-226-193.ap-northeast-2.compute.amazonaws.com:57043/';//'http://devcap.duckdns.org:57043/'
 
 router.post('/signup', (req, res) => {
 	var uid = req.body.UUID;
@@ -45,6 +45,7 @@ router.post('/signup', (req, res) => {
 				if (err) throw err;
 				db.query('INSERT INTO userprefix (uid, prefix) VALUES (?, ?)', [uid, prefix], (err, rows) => {
 					if (err) throw err;
+					db.query('INSERT INTO userprofile (uid, profile_url) VALUES (?, ?)', [uid, profile]);
 					res.sendStatus(200);
 				});
 			});
@@ -100,7 +101,7 @@ router.post('/prefixchange', (req, res) => {
 router.post('/imagechange', (req, res) => {
 	var uid = req.body.UUID;
 	var image = req.body.index;
-	var url = hostUrl + 'images/profile/profile' + image + '.png';
+	var url = hostUrl + 'images/profile/profile' + image + '.jpeg';
 	db.query('UPDATE user SET image = ? WHERE uid = ?', [url, uid], (err, rows) => {
 		res.json({image: url});
 	});
@@ -109,10 +110,13 @@ router.post('/imagechange', (req, res) => {
 router.get('/profimgs/:uid', (req, res) => {
 	var files = fs.readdirSync('./images/profile').length;
 	var ret = {ownProfileImageList: []};
-	for (var i = 0; i < files; i++) {
-		ret.ownProfileImageList.push({imgId: i, profileImg: hostUrl + 'images/profile/profile' + i + '.png'});
-	}
-	res.json(ret);
+	db.query('SELECT profile_url FROM userprofile WHERE uid = ?', [req.params.uid], (err, rows) => {
+		for (var i in rows) {
+			var index = rows[i].profile_url.split('profile').pop().split('.')[0];
+			ret.ownProfileImageList.push({imgId: index, profileImg: rows[i].profile_url});
+		}
+		res.json(ret);
+	});
 });
 
 router.get('/rawuserdata/:uid', (req, res) => {
@@ -147,11 +151,18 @@ router.post('/reward/giveprofile', (req, res) => {
 	});
 });
 
-router.post('/reward/giveprofile', (req, res) => {
+router.post('/reward/giveprefix', (req, res) => {
 	var uid = req.body.UUID;
 	var prefix = req.body.prefix;
 	db.query('INSERT INTO userprefix (uid, prefix) VALUES (?, ?)', [uid, prefix], (err, rows) => {
 		if (err) throw err;
+	});
+});
+
+router.get('/interest/:uid/', (req, res) => {
+	db.query('select * from recommendation_rating natural join tag where uid = ? order by rating desc', [req.params.uid], (err, rows) => {
+		var ret = {tags: [rows[0].name, rows[1].name, rows[2].name]};
+		res.json(ret);
 	});
 });
 
